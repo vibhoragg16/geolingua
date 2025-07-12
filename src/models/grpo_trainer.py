@@ -1,7 +1,3 @@
-import os
-os.environ["WANDB_DISABLED"] = "true"
-
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,18 +9,12 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple, Union
 import json
 from pathlib import Path
-import wandb
+# import wandb  # Commented out for Kaggle/no-wandb use
 from tqdm import tqdm
 import logging
 from dataclasses import dataclass
 from collections import defaultdict
 import matplotlib.pyplot as plt
-
-try:
-    import wandb
-    WANDB_AVAILABLE = True
-except ImportError:
-    WANDB_AVAILABLE = False
 
 @dataclass
 class GRPOTrainingConfig:
@@ -159,16 +149,16 @@ class GRPOTrainer:
         self.setup_logging()
         
         # Initialize wandb if available
-        try:
-            wandb.init(
-                project="geolingua-grpo",
-                config=config.__dict__,
-                name=f"grpo_training_{config.num_epochs}ep"
-            )
-            self.use_wandb = True
-        except:
-            self.use_wandb = False
-            self.logger.info("W&B not available, continuing without logging")
+        # try:
+        #     wandb.init(
+        #         project="geolingua-grpo",
+        #         config=config.__dict__,
+        #         name=f"grpo_training_{config.num_epochs}ep"
+        #     )
+        #     self.use_wandb = True
+        # except:
+        #     self.use_wandb = False
+        #     self.logger.info("W&B not available, continuing without logging")
     
     def setup_logging(self):
         """Setup logging configuration."""
@@ -394,10 +384,10 @@ class GRPOTrainer:
             })
             
             # Log to wandb
-            if self.use_wandb and self.global_step % self.config.logging_steps == 0:
-                log_dict = {f"train/{k}": v.item() for k, v in losses.items()}
-                log_dict['train/learning_rate'] = self.scheduler.get_last_lr()[0]
-                wandb.log(log_dict, step=self.global_step)
+            # if self.use_wandb and self.global_step % self.config.logging_steps == 0:
+            #     log_dict = {f"train/{k}": v.item() for k, v in losses.items()}
+            #     log_dict['train/learning_rate'] = self.scheduler.get_last_lr()[0]
+            #     wandb.log(log_dict, step=self.global_step)
         
         # Compute epoch averages
         epoch_avg_losses = {k: np.mean(v) for k, v in epoch_losses.items()}
@@ -473,9 +463,9 @@ class GRPOTrainer:
                     self.training_stats[f"val_{loss_name}"].append(loss_value)
                 
                 # Log to wandb
-                if self.use_wandb:
-                    log_dict = {f"val/{k}": v for k, v in eval_losses.items()}
-                    wandb.log(log_dict, step=self.global_step)
+                # if self.use_wandb:
+                #     log_dict = {f"val/{k}": v for k, v in eval_losses.items()}
+                #     wandb.log(log_dict, step=self.global_step)
             
             # Save model
             if (epoch + 1) % (self.config.save_steps // len(train_loader)) == 0:
