@@ -1,3 +1,7 @@
+import os
+os.environ["WANDB_DISABLED"] = "true"
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
