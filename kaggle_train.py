@@ -248,26 +248,34 @@ def train_model(model: GeoLinguaModel, processed_data: List[Dict], config: Dict)
     logger.info(f"Validation examples: {len(val_data)}")
     logger.info(f"Test examples: {len(test_data)}")
     
-    # Initialize GRPO trainer with train and validation data
-    trainer = GRPOTrainer(
-        model=model,
-        train_datasets=train_data,
-        eval_datasets=val_data,  # Use validation data for evaluation during training
-        learning_rate=config['learning_rate'],
+    # Create a config object for GRPOTrainer
+    trainer_config = GRPOTrainingConfig(
         num_epochs=config['num_epochs'],
-        output_dir=config['output_dir'],
-        logging_steps=config['logging_steps'],
+        batch_size=config['batch_size'],
+        learning_rate=config['learning_rate'],
+        warmup_steps=config['warmup_steps'],
+        max_grad_norm=config['max_grad_norm'],
+        geographic_loss_weight=0.1,  # or your value
+        regional_balance_weight=0.05,  # or your value
+        consistency_loss_weight=0.02,  # or your value
         eval_steps=config['eval_steps'],
         save_steps=config['save_steps'],
-        warmup_steps=config['warmup_steps'],
-        gradient_accumulation_steps=config['gradient_accumulation_steps'],
-        max_grad_norm=config['max_grad_norm'],
-        weight_decay=config['weight_decay'],
-        use_wandb=config['use_wandb']
+        logging_steps=config['logging_steps'],
+        output_dir=config['output_dir'],
+        device='cuda' if torch.cuda.is_available() else 'cpu',
+        mixed_precision=True,
+    )
+
+    trainer = GRPOTrainer(
+        model=model,
+        config=trainer_config
     )
     
     # Start training
-    best_model_path = trainer.train()
+    best_model_path = trainer.train(
+        train_data,  # or train_data, as expected
+        val_data     # or val_data, as expected
+    )
     
     return best_model_path
 
