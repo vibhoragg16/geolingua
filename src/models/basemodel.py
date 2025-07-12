@@ -19,7 +19,7 @@ from config.model_config import (
 
 logger = logging.getLogger(__name__)
 
-class GeoLinguaModel:
+class GeoLinguaModel(nn.Module):
     """
     Base model class for GeoLingua project.
     Handles model initialization, tokenization, and basic inference.
@@ -27,6 +27,7 @@ class GeoLinguaModel:
     
     def __init__(self, model_name: str = MODEL_NAME, load_in_8bit: bool = False, 
                  regions: Optional[List[str]] = None, lora_config: Optional[Dict[str, Union[str, int, float, List[str]]]] = None):
+        super().__init__()
         self.model_name = model_name
         self.load_in_8bit = load_in_8bit
         self.regions = regions if regions is not None else ['us_south', 'uk', 'australia', 'india', 'nigeria']
@@ -44,7 +45,7 @@ class GeoLinguaModel:
         # Setup LoRA if config provided
         if self.lora_config:
             target_modules = self.lora_config.get('target_modules', None)
-            if isinstance(target_modules, list):
+            if isinstance(target_modules, list) or target_modules is None:
                 self.setup_lora(target_modules=target_modules)
         
     def _load_model(self):
