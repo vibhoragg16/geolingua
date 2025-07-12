@@ -20,6 +20,12 @@ from dataclasses import dataclass
 from collections import defaultdict
 import matplotlib.pyplot as plt
 
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+
 @dataclass
 class GRPOTrainingConfig:
     """Configuration for GRPO training."""
