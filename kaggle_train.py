@@ -5,6 +5,8 @@ Trains the language model with geographic adaptation using GRPO techniques on Ka
 """
 
 import os
+os.environ["WANDB_DISABLED"] = "true"
+
 import sys
 import json
 import logging
