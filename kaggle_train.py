@@ -5,8 +5,6 @@ Trains the language model with geographic adaptation using GRPO techniques on Ka
 """
 
 import os
-os.environ["WANDB_DISABLED"] = "true"
-
 import sys
 import json
 import logging
@@ -14,7 +12,7 @@ import torch
 import random
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from collections import defaultdict
 
 # Add src and config to path for Kaggle
@@ -26,9 +24,9 @@ config_path = os.path.join(project_root, 'config')
 sys.path.insert(0, src_path)
 sys.path.insert(0, config_path)
 
-from models.basemodel import GeoLinguaModel
-from models.grpo_trainer import GRPOTrainer, GRPOTrainingConfig
-from data.loaders import DataLoader
+from src.models.basemodel import GeoLinguaModel
+from src.models.grpo_trainer import GRPOTrainer, GRPOTrainingConfig
+from src.data.loaders import DataLoader
 from config.model_config import *
 from config.data_config import *
 
@@ -160,7 +158,7 @@ def save_data_splits(train_data: List[Dict], val_data: List[Dict], test_data: Li
         logger = logging.getLogger(__name__)
         logger.info(f"Saved {split_name} split to {output_path}")
 
-def initialize_model(regions: List[str] = None) -> GeoLinguaModel:
+def initialize_model(regions: Optional[List[str]] = None) -> GeoLinguaModel:
     """
     Initialize the GeoLingua model.
     
@@ -186,7 +184,7 @@ def initialize_model(regions: List[str] = None) -> GeoLinguaModel:
             'r': LORA_R,
             'lora_alpha': LORA_ALPHA,
             'lora_dropout': LORA_DROPOUT,
-            'target_modules': None  # Let the model auto-detect
+            'target_modules': ['q_proj', 'k_proj', 'v_proj', 'o_proj']  # Explicit target modules
         }
     )
     
@@ -250,6 +248,28 @@ def train_model(model: GeoLinguaModel, processed_data: List[Dict], config: Dict)
     logger.info(f"Validation examples: {len(val_data)}")
     logger.info(f"Test examples: {len(test_data)}")
     
+    # Create GeographicDataset objects from the data
+    from src.models.grpo_trainer import GeographicDataset
+    
+    # Convert data to the format expected by GeographicDataset
+    # We need to save the data as JSON files first
+    train_data_path = "/kaggle/working/data/processed/train_data.json"
+    val_data_path = "/kaggle/working/data/processed/val_data.json"
+    
+    os.makedirs("/kaggle/working/data/processed", exist_ok=True)
+    
+    # Save train data
+    with open(train_data_path, 'w', encoding='utf-8') as f:
+        json.dump(train_data, f, indent=2, ensure_ascii=False)
+    
+    # Save validation data  
+    with open(val_data_path, 'w', encoding='utf-8') as f:
+        json.dump(val_data, f, indent=2, ensure_ascii=False)
+    
+    # Create dataset objects
+    train_dataset = GeographicDataset(train_data_path, model.tokenizer)
+    val_dataset = GeographicDataset(val_data_path, model.tokenizer)
+    
     # Create a config object for GRPOTrainer
     trainer_config = GRPOTrainingConfig(
         num_epochs=config['num_epochs'],
@@ -274,10 +294,12 @@ def train_model(model: GeoLinguaModel, processed_data: List[Dict], config: Dict)
     )
     
     # Start training
-    best_model_path = trainer.train(
-        train_data,  # or train_data, as expected
-        val_data     # or val_data, as expected
-    )
+    best_model_path = trainer.train(train_dataset, val_dataset)
+    
+    # Ensure we return a string path
+    if best_model_path is None:
+        # Fallback to the last saved checkpoint
+        best_model_path = os.path.join(config['output_dir'], 'checkpoint-latest')
     
     return best_model_path
 
