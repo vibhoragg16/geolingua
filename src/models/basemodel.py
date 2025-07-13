@@ -97,7 +97,7 @@ class GeoLinguaModel(nn.Module):
             
             if special_tokens:
                 self.tokenizer.add_tokens(special_tokens)
-                self.model.resize_token_embeddings(len(self.tokenizer))
+                self.model.resize_token_embeddings(len(self.tokenizer))  # Ensure model can handle new tokens
             
             logger.info("Tokenizer setup complete")
             
