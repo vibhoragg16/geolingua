@@ -410,6 +410,12 @@ class GRPOTrainer:
                 labels=batch['labels']
             )
             
+            # Check for NaN values in outputs
+            if batch_idx == 0:
+                for k, v in outputs.items():
+                    if isinstance(v, torch.Tensor):
+                        print(f"{k}: has nan? {torch.isnan(v).any().item()}")
+            
             # Compute GRPO losses
             losses = self.compute_grpo_loss(outputs, batch)
             
