@@ -275,6 +275,16 @@ def train_model(model: GeoLinguaModel, processed_data: List[Dict], config: Dict)
     train_dataset = GeographicDataset(train_data_path, model.tokenizer)
     val_dataset = GeographicDataset(val_data_path, model.tokenizer)
 
+    if len(train_data) == 0 or len(val_data) == 0:
+        logger.warning("One or more splits are empty. Falling back to random split.")
+        random.shuffle(processed_data)
+        n = len(processed_data)
+        train_end = int(n * 0.7)
+        val_end = train_end + int(n * 0.15)
+        train_data = processed_data[:train_end]
+        val_data = processed_data[train_end:val_end]
+        test_data = processed_data[val_end:]
+
     if len(train_data) == 0:
         logger.warning("Train split is empty!")
     if len(val_data) == 0:
