@@ -442,6 +442,10 @@ class GRPOTrainer:
             #     log_dict = {f"train/{k}": v.item() for k, v in losses.items()}
             #     log_dict['train/learning_rate'] = self.scheduler.get_last_lr()[0]
             #     wandb.log(log_dict, step=self.global_step)
+            
+            if batch_idx == 0:
+                print("input_ids:", batch['input_ids'])
+                print("labels:", batch['labels'])
         
         # Compute epoch averages
         epoch_avg_losses = {k: np.mean(v) for k, v in epoch_losses.items()}
