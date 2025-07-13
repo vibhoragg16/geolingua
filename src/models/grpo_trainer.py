@@ -81,7 +81,7 @@ class GeographicDataset(Dataset):
             # Process each item
             for item in all_data:
                 # Relaxed (for debugging)
-                if item.get('text'):
+                if item.get('text') and len(item['text'].strip()) > 50:
                     region_name = item.get('region', 'unknown')
                     
                     # Map region names to IDs
@@ -121,7 +121,7 @@ class GeographicDataset(Dataset):
                 # Process each text sample
                 for item in region_data:
                     # Relaxed (for debugging)
-                    if item.get('text'):
+                    if item.get('text') and len(item['text'].strip()) > 50:
                         processed_item = {
                             'text': item['text'],
                             'region': region_name,
