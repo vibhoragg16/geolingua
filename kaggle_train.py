@@ -321,7 +321,7 @@ def train_model(model: GeoLinguaModel, processed_data: List[Dict], config: Dict)
     # Ensure we return a string path
     if best_model_path is None:
         # Fallback to the last saved checkpoint
-        best_model_path = os.path.join(config['output_dir'], 'checkpoint-latest')
+        best_model_path = os.path.join(config['output_dir'], 'checkpoint-epoch-final', 'model.pt')
     
     return best_model_path
 
