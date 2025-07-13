@@ -87,7 +87,7 @@ class GeographicDataset(Dataset):
             # Process each item
             for item in all_data:
                 # Relaxed (for debugging)
-                if item.get('text') and len(item['text'].strip()) > 0:
+                if item.get('input') and len(item['input'].strip()) > 0:
                     region_name = item.get('region', 'unknown')
                     
                     # Map region names to IDs
@@ -97,7 +97,7 @@ class GeographicDataset(Dataset):
                         region_id += 1
                     
                     processed_item = {
-                        'text': item['text'],
+                        'text': item['input'],  # Use 'input' as the text
                         'region': region_name,
                         'region_id': self.region_to_id[region_name],
                         'metadata': {
@@ -127,9 +127,9 @@ class GeographicDataset(Dataset):
                 # Process each text sample
                 for item in region_data:
                     # Relaxed (for debugging)
-                    if item.get('text') and len(item['text'].strip()) > 0:
+                    if item.get('input') and len(item['input'].strip()) > 0:
                         processed_item = {
-                            'text': item['text'],
+                            'text': item['input'],  # Use 'input' as the text
                             'region': region_name,
                             'region_id': self.region_to_id[region_name],
                             'metadata': {
