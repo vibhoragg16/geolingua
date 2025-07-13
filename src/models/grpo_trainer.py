@@ -57,8 +57,10 @@ class GeographicDataset(Dataset):
         self.region_to_id = {}
         self.id_to_region = {}
         
-        self.load_data(data_path)
+        # Setup logging first
         self.setup_logging()
+        # Then load data
+        self.load_data(data_path)
     
     def setup_logging(self):
         """Setup logging configuration."""
@@ -67,25 +69,26 @@ class GeographicDataset(Dataset):
     
     def load_data(self, data_path: str):
         """Load data from JSON files."""
-        data_dir = Path(data_path)
+        data_path_obj = Path(data_path)
         region_id = 0
         
-        for json_file in data_dir.glob("*_reddit_data.json"):
-            region_name = json_file.stem.replace("_reddit_data", "")
+        # Check if it's a single JSON file or a directory
+        if data_path_obj.is_file():
+            # Single JSON file - load all data
+            with open(data_path, 'r', encoding='utf-8') as f:
+                all_data = json.load(f)
             
-            # Map region names to IDs
-            if region_name not in self.region_to_id:
-                self.region_to_id[region_name] = region_id
-                self.id_to_region[region_id] = region_name
-                region_id += 1
-            
-            # Load data
-            with open(json_file, 'r') as f:
-                region_data = json.load(f)
-            
-            # Process each text sample
-            for item in region_data:
+            # Process each item
+            for item in all_data:
                 if item.get('text') and len(item['text'].strip()) > 50:  # Filter short texts
+                    region_name = item.get('region', 'unknown')
+                    
+                    # Map region names to IDs
+                    if region_name not in self.region_to_id:
+                        self.region_to_id[region_name] = region_id
+                        self.id_to_region[region_id] = region_name
+                        region_id += 1
+                    
                     processed_item = {
                         'text': item['text'],
                         'region': region_name,
@@ -97,6 +100,37 @@ class GeographicDataset(Dataset):
                         }
                     }
                     self.data.append(processed_item)
+        
+        else:
+            # Directory with multiple files (original behavior)
+            data_dir = data_path_obj
+            for json_file in data_dir.glob("*_reddit_data.json"):
+                region_name = json_file.stem.replace("_reddit_data", "")
+                
+                # Map region names to IDs
+                if region_name not in self.region_to_id:
+                    self.region_to_id[region_name] = region_id
+                    self.id_to_region[region_id] = region_name
+                    region_id += 1
+                
+                # Load data
+                with open(json_file, 'r') as f:
+                    region_data = json.load(f)
+                
+                # Process each text sample
+                for item in region_data:
+                    if item.get('text') and len(item['text'].strip()) > 50:  # Filter short texts
+                        processed_item = {
+                            'text': item['text'],
+                            'region': region_name,
+                            'region_id': self.region_to_id[region_name],
+                            'metadata': {
+                                'score': item.get('score', 0),
+                                'type': item.get('type', 'unknown'),
+                                'subreddit': item.get('subreddit', 'unknown')
+                            }
+                        }
+                        self.data.append(processed_item)
         
         self.logger.info(f"Loaded {len(self.data)} samples from {len(self.region_to_id)} regions")
         self.logger.info(f"Regions: {list(self.region_to_id.keys())}")
