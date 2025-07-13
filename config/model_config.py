@@ -4,7 +4,7 @@ MODEL_NAME = "microsoft/DialoGPT-medium"  # Start with smaller model
 
 MAX_LENGTH = 512
 BATCH_SIZE = 4
-LEARNING_RATE = 1e-5
+LEARNING_RATE = 1e-6
 NUM_EPOCHS = 3
 
 # Geographic regions
