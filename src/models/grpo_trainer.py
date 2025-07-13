@@ -80,7 +80,8 @@ class GeographicDataset(Dataset):
             
             # Process each item
             for item in all_data:
-                if item.get('text') and len(item['text'].strip()) > 50:  # Filter short texts
+                # Relaxed (for debugging)
+                if item.get('text'):
                     region_name = item.get('region', 'unknown')
                     
                     # Map region names to IDs
@@ -119,7 +120,8 @@ class GeographicDataset(Dataset):
                 
                 # Process each text sample
                 for item in region_data:
-                    if item.get('text') and len(item['text'].strip()) > 50:  # Filter short texts
+                    # Relaxed (for debugging)
+                    if item.get('text'):
                         processed_item = {
                             'text': item['text'],
                             'region': region_name,
@@ -605,6 +607,18 @@ def main():
     train_dataset, val_dataset = torch.utils.data.random_split(
         train_dataset, [train_size, val_size]
     )
+    
+    # After saving splits, add:
+    print(f"Train split size: {len(train_dataset)}")
+    print(f"Val split size: {len(val_dataset)}")
+    if train_dataset:
+        print("First train sample:", train_dataset[0])
+    else:
+        print("Train data is EMPTY!")
+    if val_dataset:
+        print("First val sample:", val_dataset[0])
+    else:
+        print("Val data is EMPTY!")
     
     # Initialize trainer
     trainer = GRPOTrainer(model, config)
