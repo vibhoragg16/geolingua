@@ -62,11 +62,11 @@ class GeographicDataset(Dataset):
         # Then load data
         self.load_data(data_path)
         # Debug: log dataset size and first sample
-        self.logger.info(f"[DEBUG] GeographicDataset loaded {len(self.data)} samples.")
+        print(f"[DEBUG] GeographicDataset loaded {len(self.data)} samples.")
         if len(self.data) > 0:
-            self.logger.info(f"[DEBUG] First sample: {self.data[0]}")
+            print(f"[DEBUG] First sample: {self.data[0]}")
         else:
-            self.logger.warning("[DEBUG] No data loaded in GeographicDataset!")
+            print("[DEBUG] No data loaded in GeographicDataset!")
     
     def setup_logging(self):
         """Setup logging configuration."""
@@ -211,17 +211,17 @@ class GRPOTrainer:
                           val_dataset: Optional[GeographicDataset] = None) -> Tuple[DataLoader, Optional[DataLoader]]:
         """Create training and validation dataloaders."""
         # Debug: log dataset sizes before DataLoader creation
-        self.logger.info(f"[DEBUG] train_dataset size: {len(train_dataset)}")
+        print(f"[DEBUG] train_dataset size: {len(train_dataset)}")
         if val_dataset:
-            self.logger.info(f"[DEBUG] val_dataset size: {len(val_dataset)}")
+            print(f"[DEBUG] val_dataset size: {len(val_dataset)}")
         if len(train_dataset) > 0:
-            self.logger.info(f"[DEBUG] First train sample: {train_dataset[0]}")
+            print(f"[DEBUG] First train sample: {train_dataset[0]}")
         else:
-            self.logger.warning("[DEBUG] Train dataset is EMPTY before DataLoader creation!")
+            print("[DEBUG] Train dataset is EMPTY before DataLoader creation!")
         if val_dataset and len(val_dataset) > 0:
-            self.logger.info(f"[DEBUG] First val sample: {val_dataset[0]}")
+            print(f"[DEBUG] First val sample: {val_dataset[0]}")
         elif val_dataset:
-            self.logger.warning("[DEBUG] Val dataset is EMPTY before DataLoader creation!")
+            print("[DEBUG] Val dataset is EMPTY before DataLoader creation!")
         
         train_loader = DataLoader(
             train_dataset,
