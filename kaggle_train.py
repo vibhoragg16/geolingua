@@ -14,6 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from collections import defaultdict
+# Create GeographicDataset objects from the data
+from src.models.grpo_trainer import GeographicDataset
 
 # Add src and config to path for Kaggle
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -247,11 +249,14 @@ def train_model(model: GeoLinguaModel, processed_data: List[Dict], config: Dict)
     logger.info(f"Train examples: {len(train_data)}")
     logger.info(f"Validation examples: {len(val_data)}")
     logger.info(f"Test examples: {len(test_data)}")
+
+    # Print region distribution for each split
+    from collections import Counter
+    logger.info(f"Train region distribution: {Counter([x['region'] for x in train_data])}")
+    logger.info(f"Val region distribution: {Counter([x['region'] for x in val_data])}")
+    logger.info(f"Test region distribution: {Counter([x['region'] for x in test_data])}")
     
     # Create GeographicDataset objects from the data
-    from src.models.grpo_trainer import GeographicDataset
-    
-    # Convert data to the format expected by GeographicDataset
     # We need to save the data as JSON files first
     train_data_path = "/kaggle/working/data/processed/train_data.json"
     val_data_path = "/kaggle/working/data/processed/val_data.json"
@@ -269,6 +274,13 @@ def train_model(model: GeoLinguaModel, processed_data: List[Dict], config: Dict)
     # Create dataset objects
     train_dataset = GeographicDataset(train_data_path, model.tokenizer)
     val_dataset = GeographicDataset(val_data_path, model.tokenizer)
+
+    if len(train_data) == 0:
+        logger.warning("Train split is empty!")
+    if len(val_data) == 0:
+        logger.warning("Validation split is empty!")
+    if len(test_data) == 0:
+        logger.warning("Test split is empty!")
     
     # Create a config object for GRPOTrainer
     trainer_config = GRPOTrainingConfig(
