@@ -406,6 +406,14 @@ class GRPOTrainer:
             if batch_idx == 0:
                 num_nonpad = (batch['labels'] != -100).sum().item()
                 print(f"Non-padding labels in batch: {num_nonpad}")
+                print("max input_id:", batch['input_ids'].max().item())
+                print("max label:", batch['labels'].max().item())
+                print("vocab size:", len(self.model.tokenizer))
+
+            # Skip all-padding batches
+            if (batch['labels'] != -100).sum().item() == 0:
+                print("Skipping all-padding batch")
+                continue
 
             # Forward pass
             outputs = self.model(
