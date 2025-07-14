@@ -488,5 +488,15 @@ if __name__ == "__main__":
         print(f"\nPrompt: {prompt}")
         print(f"Generated: {generated}")
         
+        # Dummy forward pass test for NaNs
+        import torch
+        ids = torch.tensor([[1, 2, 3, 4, 5] + [model.tokenizer.eos_token_id] * (512-5)]).to(model.device)
+        mask = torch.ones_like(ids)
+        labels = ids.clone()
+        region_ids = torch.tensor([0]).to(model.device)
+        out = model(input_ids=ids, attention_mask=mask, region_ids=region_ids, labels=labels)
+        print("\nDummy forward pass NaN check:")
+        print({k: v if not isinstance(v, torch.Tensor) else torch.isnan(v).any().item() for k, v in out.items()})
+        
     except Exception as e:
         print(f"Error: {str(e)}")
