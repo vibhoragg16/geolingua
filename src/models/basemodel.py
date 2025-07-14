@@ -43,10 +43,10 @@ class GeoLinguaModel(nn.Module):
         self._setup_tokenizer()
         
         # Setup LoRA if config provided
-        if self.lora_config:
-            target_modules = self.lora_config.get('target_modules', None)
-            if isinstance(target_modules, list) or target_modules is None:
-                self.setup_lora(target_modules=target_modules)
+        # if self.lora_config:
+        #     target_modules = self.lora_config.get('target_modules', None)
+        #     if isinstance(target_modules, list) or target_modules is None:
+        #         self.setup_lora(target_modules=target_modules)
         
     def _load_model(self):
         """Load the base model and configuration."""
