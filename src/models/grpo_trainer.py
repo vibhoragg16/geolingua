@@ -276,23 +276,77 @@ class GRPOTrainer:
         )
     
     def compute_grpo_loss(self, outputs, batch):
+        """
+        Compute GRPO loss with geographic regularization.
+        """
         losses = {}
         device = outputs.logits.device if hasattr(outputs, 'logits') else 'cpu'
         # Base language modeling loss
         lm_loss = outputs.loss
         losses['lm_loss'] = lm_loss
 
-        # Reintroduce geo_loss logic here
-        # geo_loss = ... (your computation)
-        geo_loss = torch.tensor(0.0, device=device)  # Replace with real logic
+        # Geographic classification loss (placeholder: encourage similar representations for same region)
+        # For demonstration, use variance of pooled hidden states by region
+        hidden_states = outputs.hidden_states[-1] if outputs.hidden_states is not None else None
+        region_ids = batch['region_id']
+        geo_loss = torch.tensor(0.0, device=device)
+        if hidden_states is not None:
+            pooled_states = hidden_states.mean(dim=1)  # (batch_size, hidden_dim)
+            unique_regions = torch.unique(region_ids)
+            region_means = []
+            for region_id in unique_regions:
+                region_mask = region_ids == region_id
+                if region_mask.sum() > 0:
+                    region_mean = pooled_states[region_mask].mean(dim=0)
+                    region_means.append(region_mean)
+            if len(region_means) > 1:
+                region_means = torch.stack(region_means)
+                geo_loss = region_means.var()
         losses['geo_loss'] = geo_loss
 
-        # Keep others zero for now
+        # Regional balance loss (variance of per-sample LM loss by region)
         regional_balance_loss = torch.tensor(0.0, device=device)
-        consistency_loss = torch.tensor(0.0, device=device)
+        if outputs.logits is not None and batch['labels'] is not None:
+            lm_logits = outputs.logits
+            labels = batch['labels']
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            per_sample_losses = torch.nn.functional.cross_entropy(
+                shift_logits.view(-1, shift_logits.size(-1)),
+                shift_labels.view(-1),
+                ignore_index=-100,
+                reduction='none'
+            )
+            per_sample_losses = per_sample_losses.view(labels.size(0), -1).mean(dim=1)
+            unique_regions = torch.unique(region_ids)
+            regional_losses = []
+            for region_id in unique_regions:
+                region_mask = region_ids == region_id
+                if region_mask.sum() > 0:
+                    region_loss = per_sample_losses[region_mask].mean()
+                    regional_losses.append(region_loss)
+            if len(regional_losses) > 1:
+                regional_losses = torch.stack(regional_losses)
+                regional_balance_loss = regional_losses.var()
         losses['regional_balance_loss'] = regional_balance_loss
+
+        # Consistency loss (encourage similar representations for same region)
+        consistency_loss = torch.tensor(0.0, device=device)
+        if hidden_states is not None:
+            pooled_states = hidden_states.mean(dim=1)
+            unique_regions = torch.unique(region_ids)
+            for region_id in unique_regions:
+                region_mask = region_ids == region_id
+                region_states = pooled_states[region_mask]
+                if region_states.size(0) > 1:
+                    normalized_states = torch.nn.functional.normalize(region_states, p=2, dim=1)
+                    similarity_matrix = torch.mm(normalized_states, normalized_states.t())
+                    target_similarity = torch.ones_like(similarity_matrix)
+                    region_consistency = torch.nn.functional.mse_loss(similarity_matrix, target_similarity)
+                    consistency_loss += region_consistency
         losses['consistency_loss'] = consistency_loss
 
+        # Total GRPO loss
         total_loss = (
             lm_loss +
             self.config.geographic_loss_weight * geo_loss +
@@ -383,50 +437,9 @@ class GRPOTrainer:
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
         
         for batch_idx, batch in enumerate(progress_bar):
-            # Debug: Check for NaN/Inf in inputs and labels
-            if torch.isnan(batch['input_ids']).any() or torch.isinf(batch['input_ids']).any():
-                print("NaN or Inf detected in input_ids")
-            if torch.isnan(batch['labels']).any() or torch.isinf(batch['labels']).any():
-                print("NaN or Inf detected in labels")
-            # Debug: Check for OOV tokens
-            print("input_ids shape:", batch['input_ids'].shape)
-            print("input_ids max:", batch['input_ids'].max().item())
-            print("input_ids min:", batch['input_ids'].min().item())
-            print("vocab size:", len(self.model.tokenizer))
-            if batch['input_ids'].max() >= len(self.model.tokenizer):
-                print("OOV token detected in input_ids!")
-                print("OOV indices:", (batch['input_ids'] >= len(self.model.tokenizer)).nonzero())
-                print("OOV values:", batch['input_ids'][(batch['input_ids'] >= len(self.model.tokenizer))])
-            # Print unique values in labels
-            #print("Unique label values:", torch.unique(batch['labels']))
-
-            # Check for all-special-token batches (e.g., all <endoftext> tokens)
-            special_token_id = self.model.tokenizer.eos_token_id if hasattr(self.model.tokenizer, 'eos_token_id') else None
-            if special_token_id is not None:
-                all_special = (batch['input_ids'] == special_token_id).all(dim=1)
-                if all_special.any():
-                    print("Batch contains all <endoftext> tokens! Skipping this batch.")
-                    continue
-                num_non_special = (batch['input_ids'] != special_token_id).sum().item()
-                print(f"Non-<endoftext> tokens in batch: {num_non_special}")
-            else:
-                print("Warning: Tokenizer does not have eos_token_id defined.")
-
-            # Check for all-ignored-label batches
-            if (batch['labels'] != -100).sum().item() == 0:
-                print("All labels are -100 (ignore index)! Skipping this batch.")
-                continue
             # Move batch to device
             batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                     for k, v in batch.items()}
-
-            # Print number of non-padding labels in batch
-            if batch_idx == 0:
-                num_nonpad = (batch['labels'] != -100).sum().item()
-                print(f"Non-padding labels in batch: {num_nonpad}")
-                print("max input_id:", batch['input_ids'].max().item())
-                print("max label:", batch['labels'].max().item())
-                print("vocab size:", len(self.model.tokenizer))
 
             # Forward pass
             outputs = self.model(
@@ -435,37 +448,15 @@ class GRPOTrainer:
                 region_ids=batch['region_id'],
                 labels=batch['labels']
             )
-            # Debug: Check for NaN in model outputs
-            for k, v in outputs.items():
-                if isinstance(v, torch.Tensor) and torch.isnan(v).any():
-                    print(f"NaN detected in model output: {k}")
             
-            if batch_idx == 0:
-                num_nonpad = (batch['labels'] != -100).sum().item()
-                print(f"Non-padding labels in batch: {num_nonpad}")
-                print("max input_id:", batch['input_ids'].max().item())
-                print("max label:", batch['labels'].max().item())
-                print("vocab size:", len(self.model.tokenizer))
             # Compute GRPO losses
             losses = self.compute_grpo_loss(outputs, batch)
             
             # Backward pass
             self.optimizer.zero_grad()
             losses['total_loss'].backward()
-            # Debug: Print gradient norm before clipping
-            total_norm = 0
-            for p in self.model.parameters():
-                if p.grad is not None:
-                    param_norm = p.grad.data.norm(2)
-                    total_norm += param_norm.item() ** 2
-            total_norm = total_norm ** 0.5
-            print(f"Total grad norm before clipping: {total_norm}")
             # Gradient clipping (lowered max_norm)
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)
-            # Debug: Check for NaN in gradients
-            for name, param in self.model.named_parameters():
-                if param.grad is not None and torch.isnan(param.grad).any():
-                    print(f"NaN detected in gradients of {name}")
             
             # Update parameters
             self.optimizer.step()
@@ -490,10 +481,6 @@ class GRPOTrainer:
             #     log_dict['train/learning_rate'] = self.scheduler.get_last_lr()[0]
             #     wandb.log(log_dict, step=self.global_step)
             
-            if batch_idx == 0:
-                print("input_ids:", batch['input_ids'])
-                print("labels:", batch['labels'])
-        
         # Compute epoch averages
         epoch_avg_losses = {k: np.mean(v) for k, v in epoch_losses.items()}
         
