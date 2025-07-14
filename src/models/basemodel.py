@@ -98,6 +98,13 @@ class GeoLinguaModel(nn.Module):
             if special_tokens:
                 self.tokenizer.add_tokens(special_tokens)
                 self.model.resize_token_embeddings(len(self.tokenizer))  # Ensure model can handle new tokens
+                # Initialize new token embeddings to mean of old embeddings
+                with torch.no_grad():
+                    input_embeddings = self.model.get_input_embeddings().weight
+                    num_new = len(special_tokens)
+                    if num_new > 0:
+                        mean_embed = input_embeddings[:-num_new].mean(dim=0)
+                        input_embeddings[-num_new:] = mean_embed
             
             logger.info("Tokenizer setup complete")
             
