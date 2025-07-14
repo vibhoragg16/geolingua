@@ -36,7 +36,7 @@ FINAL_MODEL_PATH = "models/final"
 
 # Device configuration
 DEVICE = "cuda"  # or "cpu"
-FP16 = True
+FP16 = False
 DATALOADER_NUM_WORKERS = 4
 
 # Generation parameters
