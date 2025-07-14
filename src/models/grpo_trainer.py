@@ -383,10 +383,6 @@ class GRPOTrainer:
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
         
         for batch_idx, batch in enumerate(progress_bar):
-            # Debug: Check for NaN/Inf, min, max, dtype in all batch tensors before model call
-            for name, tensor in batch.items():
-                if isinstance(tensor, torch.Tensor):
-                    print(f"{name}: NaN? {torch.isnan(tensor).any().item()}, Inf? {torch.isinf(tensor).any().item()}, min: {tensor.min().item()}, max: {tensor.max().item()}, dtype: {tensor.dtype}")
             # Debug: Check for NaN/Inf in inputs and labels
             if torch.isnan(batch['input_ids']).any() or torch.isinf(batch['input_ids']).any():
                 print("NaN or Inf detected in input_ids")
