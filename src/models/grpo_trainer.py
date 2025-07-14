@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from collections import defaultdict
 import matplotlib.pyplot as plt
 
-#
 @dataclass
 class GRPOTrainingConfig:
     """Configuration for GRPO training."""
@@ -418,6 +417,23 @@ class GRPOTrainer:
                 print("Decoded input:", self.model.tokenizer.decode(batch['input_ids'][i].tolist()))
             # Print unique values in labels
             print("Unique label values:", torch.unique(batch['labels']))
+
+            # Check for all-special-token batches (e.g., all <endoftext> tokens)
+            special_token_id = self.model.tokenizer.eos_token_id if hasattr(self.model.tokenizer, 'eos_token_id') else None
+            if special_token_id is not None:
+                all_special = (batch['input_ids'] == special_token_id).all(dim=1)
+                if all_special.any():
+                    print("Batch contains all <endoftext> tokens! Skipping this batch.")
+                    continue
+                num_non_special = (batch['input_ids'] != special_token_id).sum().item()
+                print(f"Non-<endoftext> tokens in batch: {num_non_special}")
+            else:
+                print("Warning: Tokenizer does not have eos_token_id defined.")
+
+            # Check for all-ignored-label batches
+            if (batch['labels'] != -100).sum().item() == 0:
+                print("All labels are -100 (ignore index)! Skipping this batch.")
+                continue
             # Move batch to device
             batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                     for k, v in batch.items()}
@@ -429,11 +445,6 @@ class GRPOTrainer:
                 print("max input_id:", batch['input_ids'].max().item())
                 print("max label:", batch['labels'].max().item())
                 print("vocab size:", len(self.model.tokenizer))
-
-            # Skip all-padding batches
-            if (batch['labels'] != -100).sum().item() == 0:
-                print("Skipping all-padding batch")
-                continue
 
             # Forward pass
             outputs = self.model(
