@@ -397,9 +397,6 @@ class GRPOTrainer:
                 print("OOV token detected in input_ids!")
                 print("OOV indices:", (batch['input_ids'] >= len(self.model.tokenizer)).nonzero())
                 print("OOV values:", batch['input_ids'][(batch['input_ids'] >= len(self.model.tokenizer))])
-            # Print decoded input text for first 3 samples
-            for i in range(min(3, batch['input_ids'].shape[0])):
-                print("Decoded input:", self.model.tokenizer.decode(batch['input_ids'][i].tolist()))
             # Print unique values in labels
             print("Unique label values:", torch.unique(batch['labels']))
 
