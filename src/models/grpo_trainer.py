@@ -398,7 +398,7 @@ class GRPOTrainer:
                 print("OOV indices:", (batch['input_ids'] >= len(self.model.tokenizer)).nonzero())
                 print("OOV values:", batch['input_ids'][(batch['input_ids'] >= len(self.model.tokenizer))])
             # Print unique values in labels
-            print("Unique label values:", torch.unique(batch['labels']))
+            #print("Unique label values:", torch.unique(batch['labels']))
 
             # Check for all-special-token batches (e.g., all <endoftext> tokens)
             special_token_id = self.model.tokenizer.eos_token_id if hasattr(self.model.tokenizer, 'eos_token_id') else None
