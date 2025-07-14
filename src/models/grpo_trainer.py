@@ -276,26 +276,23 @@ class GRPOTrainer:
         )
     
     def compute_grpo_loss(self, outputs, batch):
-        """
-        Compute GRPO loss with geographic regularization.
-        For minimal debugging, only use outputs.loss, outputs.logits, outputs.hidden_states.
-        Set geo_loss, regional_balance_loss, and consistency_loss to zero tensors.
-        """
         losses = {}
         device = outputs.logits.device if hasattr(outputs, 'logits') else 'cpu'
         # Base language modeling loss
         lm_loss = outputs.loss
         losses['lm_loss'] = lm_loss
-        # Geographic classification loss (set to zero for minimal model)
-        geo_loss = torch.tensor(0.0, device=device)
+
+        # Reintroduce geo_loss logic here
+        # geo_loss = ... (your computation)
+        geo_loss = torch.tensor(0.0, device=device)  # Replace with real logic
         losses['geo_loss'] = geo_loss
-        # Regional balance loss (set to zero)
+
+        # Keep others zero for now
         regional_balance_loss = torch.tensor(0.0, device=device)
-        losses['regional_balance_loss'] = regional_balance_loss
-        # Consistency loss (set to zero)
         consistency_loss = torch.tensor(0.0, device=device)
+        losses['regional_balance_loss'] = regional_balance_loss
         losses['consistency_loss'] = consistency_loss
-        # Total GRPO loss
+
         total_loss = (
             lm_loss +
             self.config.geographic_loss_weight * geo_loss +
