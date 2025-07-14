@@ -28,7 +28,7 @@ class GRPOTrainingConfig:
     # Training parameters
     num_epochs: int = 5
     batch_size: int = 8
-    learning_rate: float = 5e-5
+    learning_rate: float = 1e-6  # Lowered learning rate for stability
     warmup_steps: int = 1000
     max_grad_norm: float = 1.0
     
@@ -398,6 +398,16 @@ class GRPOTrainer:
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
         
         for batch_idx, batch in enumerate(progress_bar):
+            # Debug: Check for NaN/Inf in inputs and labels
+            if torch.isnan(batch['input_ids']).any() or torch.isinf(batch['input_ids']).any():
+                print("NaN or Inf detected in input_ids")
+            if torch.isnan(batch['labels']).any() or torch.isinf(batch['labels']).any():
+                print("NaN or Inf detected in labels")
+            # Debug: Check for OOV tokens
+            if batch['input_ids'].max() >= len(self.model.tokenizer):
+                print("OOV token detected in input_ids")
+            if batch['labels'].max() >= len(self.model.tokenizer):
+                print("OOV token detected in labels")
             # Move batch to device
             batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                     for k, v in batch.items()}
@@ -422,13 +432,11 @@ class GRPOTrainer:
                 region_ids=batch['region_id'],
                 labels=batch['labels']
             )
-            # Check for NaN values in outputs
-            #if batch_idx == 0:
-            #    for k, v in outputs.items():
-            #        if isinstance(v, torch.Tensor):
-            #           print(f"{k}: has nan? {torch.isnan(v).any().item()}")
+            # Debug: Check for NaN in model outputs
+            for k, v in outputs.items():
+                if isinstance(v, torch.Tensor) and torch.isnan(v).any():
+                    print(f"NaN detected in model output: {k}")
             
-
             if batch_idx == 0:
                 num_nonpad = (batch['labels'] != -100).sum().item()
                 print(f"Non-padding labels in batch: {num_nonpad}")
@@ -441,9 +449,17 @@ class GRPOTrainer:
             # Backward pass
             self.optimizer.zero_grad()
             losses['total_loss'].backward()
+            # Debug: Print gradient norm before clipping
+            total_norm = 0
+            for p in self.model.parameters():
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2)
+                    total_norm += param_norm.item() ** 2
+            total_norm = total_norm ** 0.5
+            print(f"Total grad norm before clipping: {total_norm}")
             # Gradient clipping (lowered max_norm)
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)
-            # Check for NaN in gradients
+            # Debug: Check for NaN in gradients
             for name, param in self.model.named_parameters():
                 if param.grad is not None and torch.isnan(param.grad).any():
                     print(f"NaN detected in gradients of {name}")
