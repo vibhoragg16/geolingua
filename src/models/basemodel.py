@@ -359,55 +359,17 @@ class GeoLinguaModel(nn.Module):
             raise
     
     def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, 
-                region_ids: torch.Tensor, labels: Optional[torch.Tensor] = None) -> Dict[str, Union[torch.Tensor, None]]:
+                region_ids: torch.Tensor, labels: Optional[torch.Tensor] = None):
         """
-        Forward pass for training.
-        
-        Args:
-            input_ids: Token IDs
-            attention_mask: Attention mask
-            region_ids: Region IDs for geographic context
-            labels: Optional labels for language modeling
-            
-        Returns:
-            Dictionary containing model outputs
+        Minimal forward pass for debugging: just call the HuggingFace model and return its outputs.
         """
-        if self.model is None:
-            raise ValueError("Model not initialized")
-        
-        # Forward pass through the model
         outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             labels=labels,
             output_hidden_states=True
         )
-        
-        # Extract outputs
-        logits = outputs.logits
-        hidden_states = outputs.hidden_states[-1] if outputs.hidden_states else None
-        
-        # Compute losses
-        lm_loss = outputs.loss if labels is not None else None
-        
-        # Simple geographic classification (placeholder)
-        # In a real implementation, you might want more sophisticated geographic modeling
-        if hidden_states is not None:
-            pooled_states = hidden_states.mean(dim=1)  # Pool over sequence dimension
-            geo_logits = torch.zeros(pooled_states.size(0), len(self.regions), device=pooled_states.device)
-            geo_loss = torch.tensor(0.0, device=pooled_states.device) if labels is not None else None
-        else:
-            geo_logits = None
-            geo_loss = None
-        
-        return {
-            'logits': logits,
-            'geo_logits': geo_logits,
-            'lm_loss': lm_loss,
-            'geo_loss': geo_loss,
-            'hidden_states': hidden_states,
-            'loss': lm_loss  # For compatibility
-        }
+        return outputs
     
     def get_model_info(self) -> Dict[str, any]:
         """
