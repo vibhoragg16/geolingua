@@ -275,8 +275,7 @@ class GRPOTrainer:
             num_training_steps=total_steps
         )
     
-    def compute_grpo_loss(self, outputs: Dict[str, torch.Tensor], 
-                         batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def compute_grpo_loss(self, outputs, batch):
         """
         Compute GRPO loss with geographic regularization.
         
@@ -290,7 +289,7 @@ class GRPOTrainer:
         losses = {}
         
         # Base language modeling loss
-        lm_loss = outputs['lm_loss']
+        lm_loss = outputs.loss
         losses['lm_loss'] = lm_loss
         
         # Geographic classification loss
