@@ -278,32 +278,23 @@ class GRPOTrainer:
     def compute_grpo_loss(self, outputs, batch):
         """
         Compute GRPO loss with geographic regularization.
-        
-        Args:
-            outputs: Model outputs
-            batch: Training batch
-            
-        Returns:
-            Dictionary of losses
+        For minimal debugging, only use outputs.loss, outputs.logits, outputs.hidden_states.
+        Set geo_loss, regional_balance_loss, and consistency_loss to zero tensors.
         """
         losses = {}
-        
+        device = outputs.logits.device if hasattr(outputs, 'logits') else 'cpu'
         # Base language modeling loss
         lm_loss = outputs.loss
         losses['lm_loss'] = lm_loss
-        
-        # Geographic classification loss
-        geo_loss = outputs['geo_loss']
+        # Geographic classification loss (set to zero for minimal model)
+        geo_loss = torch.tensor(0.0, device=device)
         losses['geo_loss'] = geo_loss
-        
-        # Regional balance loss - encourages similar performance across regions
-        regional_balance_loss = self.compute_regional_balance_loss(outputs, batch)
+        # Regional balance loss (set to zero)
+        regional_balance_loss = torch.tensor(0.0, device=device)
         losses['regional_balance_loss'] = regional_balance_loss
-        
-        # Consistency loss - encourages similar representations for similar content
-        consistency_loss = self.compute_consistency_loss(outputs, batch)
+        # Consistency loss (set to zero)
+        consistency_loss = torch.tensor(0.0, device=device)
         losses['consistency_loss'] = consistency_loss
-        
         # Total GRPO loss
         total_loss = (
             lm_loss +
@@ -311,9 +302,7 @@ class GRPOTrainer:
             self.config.regional_balance_weight * regional_balance_loss +
             self.config.consistency_loss_weight * consistency_loss
         )
-        
         losses['total_loss'] = total_loss
-        
         return losses
     
     def compute_regional_balance_loss(self, outputs: Dict[str, torch.Tensor], 
