@@ -404,10 +404,19 @@ class GRPOTrainer:
             if torch.isnan(batch['labels']).any() or torch.isinf(batch['labels']).any():
                 print("NaN or Inf detected in labels")
             # Debug: Check for OOV tokens
+            print("input_ids shape:", batch['input_ids'].shape)
+            print("input_ids max:", batch['input_ids'].max().item())
+            print("input_ids min:", batch['input_ids'].min().item())
+            print("vocab size:", len(self.model.tokenizer))
             if batch['input_ids'].max() >= len(self.model.tokenizer):
-                print("OOV token detected in input_ids")
-            if batch['labels'].max() >= len(self.model.tokenizer):
-                print("OOV token detected in labels")
+                print("OOV token detected in input_ids!")
+                print("OOV indices:", (batch['input_ids'] >= len(self.model.tokenizer)).nonzero())
+                print("OOV values:", batch['input_ids'][(batch['input_ids'] >= len(self.model.tokenizer))])
+            # Print decoded input text for first 3 samples
+            for i in range(min(3, batch['input_ids'].shape[0])):
+                print("Decoded input:", self.model.tokenizer.decode(batch['input_ids'][i].tolist()))
+            # Print unique values in labels
+            print("Unique label values:", torch.unique(batch['labels']))
             # Move batch to device
             batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                     for k, v in batch.items()}
