@@ -23,9 +23,8 @@ config_path = os.path.join(project_root, 'config')
 sys.path.insert(0, src_path)
 sys.path.insert(0, config_path)
 
-from src.models.basemodel import GeoLinguaModel
-from config.model_config import *
-from config.data_config import *
+from src.models.geographic_adapter import GeographicAdapter, GeographicAdapterConfig
+import torch
 
 def setup_logging():
     """Setup logging configuration."""
@@ -60,7 +59,7 @@ def load_test_data(test_path: str = "/kaggle/input/my-dataset/test_split.json"):
         logger.error(f"Error loading test data: {e}")
         raise
 
-def load_trained_model(model_path: str) -> GeoLinguaModel:
+def load_trained_model(model_path: str) -> GeographicAdapter:
     """
     Load the trained model.
     
@@ -68,25 +67,24 @@ def load_trained_model(model_path: str) -> GeoLinguaModel:
         model_path: Path to the trained model checkpoint
         
     Returns:
-        Loaded GeoLinguaModel
+        Loaded GeographicAdapter
     """
     logger = logging.getLogger(__name__)
     
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model not found at {model_path}")
     
-    # Initialize model with same configuration as training
-    model = GeoLinguaModel(
-        model_name=MODEL_NAME,
-        regions=['us_south', 'uk', 'australia', 'india', 'nigeria'],
-        lora_config={
-            'r': LORA_R,
-            'lora_alpha': LORA_ALPHA,
-            'lora_dropout': LORA_DROPOUT,
-            'target_modules': ['c_attn', 'c_proj']
-        }
+    # Recreate the Config (must match training!)
+    config = GeographicAdapterConfig(
+        base_model_name="gpt2",         # or whatever you used
+        num_regions=5,                  # or your number of regions
+        region_embedding_dim=64         # or your value
+        # ...add any other params you changed during training
     )
-    
+
+    # Instantiate the Model
+    model = GeographicAdapter(config)
+
     # Load trained weights
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     checkpoint = torch.load(model_path, map_location=device, weights_only=False)
@@ -128,7 +126,7 @@ def create_test_dataset(test_data, tokenizer, max_length):
             }
     return TestDataset(test_data, tokenizer, max_length)
 
-def evaluate_model(model: GeoLinguaModel, test_data: List[Dict]) -> Dict:
+def evaluate_model(model: GeographicAdapter, test_data: List[Dict]) -> Dict:
     """
     Evaluate the model on test data using batching for speed.
     """
