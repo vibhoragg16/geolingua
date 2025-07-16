@@ -141,6 +141,7 @@ def evaluate_model(model: GeographicAdapter, test_data: List[Dict]) -> Dict:
 
     # Evaluation metrics
     total_loss = 0.0
+    total_samples = 0
     region_metrics = defaultdict(lambda: {'loss': 0.0, 'count': 0})
     batch_size = 16  # You can adjust this based on your GPU/CPU memory
     max_length = getattr(model, 'max_length', 512)
@@ -166,8 +167,11 @@ def evaluate_model(model: GeographicAdapter, test_data: List[Dict]) -> Dict:
                         region_ids=region_ids,
                         labels=labels
                     )
-                    print("Batch loss:", outputs['loss'])
-                    loss = outputs.loss
+                    batch_loss = outputs['loss']
+                    print("Batch loss:", batch_loss)
+                    batch_size = input_ids.size(0)
+                    total_loss += batch_loss.item() * batch_size
+                    total_samples += batch_size
                     region_loss += loss.item() * input_ids.size(0)
                     total_loss += loss.item() * input_ids.size(0)
                     region_metrics[region]['loss'] += loss.item() * input_ids.size(0)
@@ -177,8 +181,11 @@ def evaluate_model(model: GeographicAdapter, test_data: List[Dict]) -> Dict:
                     continue
 
     # Calculate average losses
-    total_examples = len(test_data)
-    avg_loss = total_loss / total_examples if total_examples else 0.0
+    if total_samples > 0:
+        avg_loss = total_loss / total_samples
+    else:
+        avg_loss = 0.0
+
     for region in region_metrics:
         if region_metrics[region]['count'] > 0:
             region_metrics[region]['avg_loss'] = region_metrics[region]['loss'] / region_metrics[region]['count']
@@ -186,7 +193,7 @@ def evaluate_model(model: GeographicAdapter, test_data: List[Dict]) -> Dict:
     # Compile results
     results = {
         'overall': {
-            'total_examples': total_examples,
+            'total_examples': total_samples,
             'average_loss': avg_loss
         },
         'by_region': dict(region_metrics)
