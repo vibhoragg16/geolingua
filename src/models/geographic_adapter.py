@@ -257,12 +257,12 @@ class GeographicAdapter(nn.Module):
         adapted = adapted + hidden_states
         # Use geo_embeddings directly (no pooling)
         geo_context = geo_embeddings  # [batch, seq_len, region_embedding_dim]
-        # Debug prints (remove/comment after confirming fix)
-        # print("adapted shape:", adapted.shape)
-        # print("geo_context shape:", geo_context.shape)
-        # Concatenate and fuse
+        # Debug prints
+        print("adapted shape:", adapted.shape)
+        print("geo_context shape:", geo_context.shape)
         fused_input = torch.cat([adapted, geo_context], dim=-1)  # [batch, seq_len, hidden_dim + region_embedding_dim]
-        # print("fused_input shape:", fused_input.shape)
+        print("fused_input shape:", fused_input.shape)
+        print("Expected in_features for fusion:", self.base_model.config.hidden_size + self.config.region_embedding_dim)
         final_states = self.geographic_fusion(fused_input)
         return final_states
     
