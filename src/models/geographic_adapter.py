@@ -191,8 +191,8 @@ class GeographicAdapter(nn.Module):
             output_hidden_states=True
         )
         
-        # Extract hidden states
-        hidden_states = base_outputs.last_hidden_state  # (batch_size, seq_len, hidden_dim)
+        # Fix: use the last element of hidden_states
+        hidden_states = base_outputs.hidden_states[-1]
         
         # Apply geographic adaptation
         adapted_states = self.apply_geographic_adaptation(hidden_states, region_ids)
