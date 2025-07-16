@@ -34,7 +34,7 @@ def setup_logging():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-def load_test_data(test_path: str = "data/processed/test_split.json"):
+def load_test_data(test_path: str = "/kaggle/input/dataset/test_split.json"):
     """
     Load the test dataset.
     
@@ -83,7 +83,7 @@ def load_trained_model(model_path: str) -> GeoLinguaModel:
             'r': LORA_R,
             'lora_alpha': LORA_ALPHA,
             'lora_dropout': LORA_DROPOUT,
-            'target_modules': ['q_proj', 'k_proj', 'v_proj', 'o_proj']
+            'target_modules': ['c_attn', 'c_proj']
         }
     )
     
@@ -245,7 +245,7 @@ def main():
         test_data = load_test_data()
         
         # Load trained model
-        model_path = "models/final/geolingua_model.pth"  # Adjust path as needed
+        model_path = "/kaggle/input/my-models/final/geolingua_model.pth"  # Adjust path as needed
         model = load_trained_model(model_path)
         
         # Evaluate model
