@@ -34,7 +34,7 @@ def setup_logging():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-def load_test_data(test_path: str = "/kaggle/input/datasetss/test_split.json"):
+def load_test_data(test_path: str = "/kaggle/input/my-dataset/test_split.json"):
     """
     Load the test dataset.
     
