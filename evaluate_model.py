@@ -86,7 +86,7 @@ def load_trained_model(model_path: str) -> GeographicAdapter:
     model = GeographicAdapter(config)
 
     # Load trained weights
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint = torch.load(model_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     model = model.to(device)
@@ -155,11 +155,11 @@ def evaluate_model(model: GeographicAdapter, test_data: List[Dict]) -> Dict:
             dataset = create_test_dataset(items, model.tokenizer, max_length)
             loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
             for batch in loader:
-                input_ids = batch['input_ids'].to(model.device)
-                attention_mask = batch['attention_mask'].to(model.device)
-                labels = batch['labels'].to(model.device)
+                input_ids = batch['input_ids'].to(next(model.parameters()).device)
+                attention_mask = batch['attention_mask'].to(next(model.parameters()).device)
+                labels = batch['labels'].to(next(model.parameters()).device)
                 # If you have region_id mapping, use it here. For now, set all to 0.
-                region_ids = torch.zeros(input_ids.size(0), dtype=torch.long).to(model.device)
+                region_ids = torch.zeros(input_ids.size(0), dtype=torch.long).to(next(model.parameters()).device)
                 try:
                     outputs = model(
                         input_ids=input_ids,
