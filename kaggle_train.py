@@ -360,11 +360,11 @@ def main():
         # Load processed data
         processed_data = load_processed_data()
         
-        # Initialize model
-        model = initialize_model(model_type=config['model_type'])
-        
-        # Create training config
+        # Create training config FIRST
         config = create_training_config()
+        
+        # Initialize model using config
+        model = initialize_model(model_type=config['model_type'])
         
         # Create output directory
         os.makedirs(config['output_dir'], exist_ok=True)
