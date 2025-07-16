@@ -16,6 +16,7 @@ from typing import List, Dict, Tuple, Optional
 from collections import defaultdict
 # Create GeographicDataset objects from the data
 from src.models.grpo_trainer import GeographicDataset
+from src.models.geographic_adapter import GeographicAdapter, GeographicAdapterConfig
 
 # Add src and config to path for Kaggle
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -160,7 +161,7 @@ def save_data_splits(train_data: List[Dict], val_data: List[Dict], test_data: Li
         logger = logging.getLogger(__name__)
         logger.info(f"Saved {split_name} split to {output_path}")
 
-def initialize_model(regions: Optional[List[str]] = None) -> GeoLinguaModel:
+def initialize_model(regions: Optional[List[str]] = None, model_type: str = "geographicadapter") -> torch.nn.Module:
     """
     Initialize the GeoLingua model.
     
@@ -175,20 +176,27 @@ def initialize_model(regions: Optional[List[str]] = None) -> GeoLinguaModel:
     if regions is None:
         regions = ['us_south', 'uk', 'australia', 'india', 'nigeria']
     
-    logger.info(f"Initializing model: {MODEL_NAME}")
+    logger.info(f"Initializing model: {MODEL_NAME} (type: {model_type})")
     logger.info(f"Regions: {regions}")
     
-    # Initialize model
-    model = GeoLinguaModel(
-        model_name=MODEL_NAME,
-        regions=regions,
-        lora_config={
-            'r': LORA_R,
-            'lora_alpha': LORA_ALPHA,
-            'lora_dropout': LORA_DROPOUT,
-            'target_modules': ['c_attn', 'c_proj']
-        }
-    )
+    if model_type == "geolinguamodel":
+        model = GeoLinguaModel(
+            model_name=MODEL_NAME,
+            regions=regions,
+            lora_config={
+                'r': LORA_R,
+                'lora_alpha': LORA_ALPHA,
+                'lora_dropout': LORA_DROPOUT,
+                'target_modules': ['c_attn', 'c_proj']
+            }
+        )
+    else:
+        config = GeographicAdapterConfig(
+            base_model_name=MODEL_NAME,
+            num_regions=len(regions),
+            region_embedding_dim=64
+        )
+        model = GeographicAdapter(config)
     
     # Move to device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -214,10 +222,11 @@ def create_training_config():
         'max_grad_norm': 1.0,
         'weight_decay': 0.01,
         'use_wandb': False,  # Disable wandb on Kaggle
-        'output_dir': '/kaggle/working/models/checkpoints'
+        'output_dir': '/kaggle/working/models/checkpoints',
+        'model_type': 'geographicadapter',  # or 'geolinguamodel'
     }
 
-def train_model(model: GeoLinguaModel, processed_data: List[Dict], config: Dict) -> str:
+def train_model(model: torch.nn.Module, processed_data: List[Dict], config: Dict) -> str:
     """
     Train the GeoLingua model using GRPO.
     
@@ -352,7 +361,7 @@ def main():
         processed_data = load_processed_data()
         
         # Initialize model
-        model = initialize_model()
+        model = initialize_model(model_type=config['model_type'])
         
         # Create training config
         config = create_training_config()
