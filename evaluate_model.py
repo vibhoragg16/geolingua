@@ -158,7 +158,6 @@ def evaluate_model(model: GeographicAdapter, test_data: List[Dict]) -> Dict:
                 input_ids = batch['input_ids'].to(next(model.parameters()).device)
                 attention_mask = batch['attention_mask'].to(next(model.parameters()).device)
                 labels = batch['labels'].to(next(model.parameters()).device)
-                # If you have region_id mapping, use it here. For now, set all to 0.
                 region_ids = torch.zeros(input_ids.size(0), dtype=torch.long).to(next(model.parameters()).device)
                 try:
                     outputs = model(
@@ -167,6 +166,7 @@ def evaluate_model(model: GeographicAdapter, test_data: List[Dict]) -> Dict:
                         region_ids=region_ids,
                         labels=labels
                     )
+                    print("Batch loss:", outputs['loss'])
                     loss = outputs.loss
                     region_loss += loss.item() * input_ids.size(0)
                     total_loss += loss.item() * input_ids.size(0)
