@@ -186,7 +186,7 @@ def initialize_model(regions: Optional[List[str]] = None) -> GeoLinguaModel:
             'r': LORA_R,
             'lora_alpha': LORA_ALPHA,
             'lora_dropout': LORA_DROPOUT,
-            'target_modules': ['q_proj', 'k_proj', 'v_proj', 'o_proj']  # Explicit target modules
+            'target_modules': ['c_attn', 'c_proj']
         }
     )
     
