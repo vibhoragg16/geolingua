@@ -39,14 +39,13 @@ class GeographicAdapterConfig:
 class GeographicEmbedding(nn.Module):
     """Geographic embedding layer that encodes regional context."""
     
-    def __init__(self, num_regions: int, embedding_dim: int):
+    def __init__(self, num_regions: int, embedding_dim: int, hidden_dim: int):
         super().__init__()
         self.num_regions = num_regions
         self.embedding_dim = embedding_dim
-        
+        self.hidden_dim = hidden_dim
         # Region embedding lookup
         self.region_embedding = nn.Embedding(num_regions, embedding_dim)
-        
         # Geographic context processor
         self.geographic_processor = nn.Sequential(
             nn.Linear(embedding_dim, embedding_dim * 2),
@@ -55,10 +54,11 @@ class GeographicEmbedding(nn.Module):
             nn.Linear(embedding_dim * 2, embedding_dim),
             nn.LayerNorm(embedding_dim)
         )
-        
+        # Project region embedding to hidden_dim for attention
+        self.region_to_hidden = nn.Linear(embedding_dim, hidden_dim)
         # Geographic attention for adaptive weighting
         self.geographic_attention = nn.MultiheadAttention(
-            embed_dim=embedding_dim,
+            embed_dim=hidden_dim,
             num_heads=4,
             dropout=0.1,
             batch_first=True
@@ -78,21 +78,19 @@ class GeographicEmbedding(nn.Module):
         """
         # Get region embeddings
         region_emb = self.region_embedding(region_ids)  # (batch_size, embedding_dim)
-        
         # Process geographic context
         geo_context = self.geographic_processor(region_emb)  # (batch_size, embedding_dim)
-        
         # Expand for sequence length
         batch_size, seq_len, hidden_dim = text_embeddings.shape
-        geo_context_expanded = geo_context.unsqueeze(1).expand(-1, seq_len, -1)
-        
+        geo_context_expanded = geo_context.unsqueeze(1).expand(-1, seq_len, -1)  # (batch, seq_len, embedding_dim)
+        # Project region embedding to hidden_dim for attention
+        geo_query = self.region_to_hidden(geo_context_expanded)  # (batch, seq_len, hidden_dim)
         # Apply geographic attention
         geo_attended, _ = self.geographic_attention(
-            query=geo_context_expanded,
+            query=geo_query,
             key=text_embeddings,
             value=text_embeddings
         )
-        
         return geo_attended
 
 
@@ -115,7 +113,8 @@ class GeographicAdapter(nn.Module):
         # Geographic components
         self.geographic_embedding = GeographicEmbedding(
             num_regions=config.num_regions,
-            embedding_dim=config.region_embedding_dim
+            embedding_dim=config.region_embedding_dim,
+            hidden_dim=self.base_model.config.hidden_size
         )
         
         # Adapter layers
