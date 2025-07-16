@@ -12,6 +12,7 @@ import torch
 from pathlib import Path
 from typing import List, Dict
 from collections import defaultdict
+from torch.utils.data import Dataset, DataLoader
 
 # Add src and config to path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +23,7 @@ config_path = os.path.join(project_root, 'config')
 sys.path.insert(0, src_path)
 sys.path.insert(0, config_path)
 
-from models.basemodel import GeoLinguaModel
+from src.models.basemodel import GeoLinguaModel
 from config.model_config import *
 from config.data_config import *
 
@@ -88,7 +89,7 @@ def load_trained_model(model_path: str) -> GeoLinguaModel:
     
     # Load trained weights
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    checkpoint = torch.load(model_path, map_location=device)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     model = model.to(device)
     model.eval()
@@ -98,70 +99,100 @@ def load_trained_model(model_path: str) -> GeoLinguaModel:
     
     return model
 
+def create_test_dataset(test_data, tokenizer, max_length):
+    class TestDataset(Dataset):
+        def __init__(self, data, tokenizer, max_length):
+            self.data = data
+            self.tokenizer = tokenizer
+            self.max_length = max_length
+
+        def __len__(self):
+            return len(self.data)
+
+        def __getitem__(self, idx):
+            item = self.data[idx]
+            text = item.get('text', '')
+            region = item.get('region', 'unknown')
+            inputs = self.tokenizer(
+                text,
+                truncation=True,
+                padding='max_length',
+                max_length=self.max_length,
+                return_tensors='pt'
+            )
+            return {
+                'input_ids': inputs['input_ids'].squeeze(0),
+                'attention_mask': inputs['attention_mask'].squeeze(0),
+                'labels': inputs['input_ids'].squeeze(0),
+                'region': region
+            }
+    return TestDataset(test_data, tokenizer, max_length)
+
 def evaluate_model(model: GeoLinguaModel, test_data: List[Dict]) -> Dict:
     """
-    Evaluate the model on test data.
-    
-    Args:
-        model: Trained GeoLinguaModel
-        test_data: Test dataset
-        
-    Returns:
-        Dictionary with evaluation metrics
+    Evaluate the model on test data using batching for speed.
     """
     logger = logging.getLogger(__name__)
-    
-    logger.info("Starting model evaluation...")
-    
+    logger.info("Starting model evaluation (batched)...")
+
     # Group test data by region
     region_data = defaultdict(list)
     for item in test_data:
         region = item.get('region', 'unknown')
         region_data[region].append(item)
-    
+
     # Evaluation metrics
     total_loss = 0.0
     region_metrics = defaultdict(lambda: {'loss': 0.0, 'count': 0})
-    
+    batch_size = 16  # You can adjust this based on your GPU/CPU memory
+    max_length = getattr(model, 'max_length', 512)
+
     model.eval()
     with torch.no_grad():
         for region, items in region_data.items():
             logger.info(f"Evaluating region: {region} ({len(items)} examples)")
-            
             region_loss = 0.0
-            for item in items:
-                # Get input text and target region
-                text = item.get('text', '')
-                target_region = item.get('region', 'unknown')
-                
-                # Forward pass (simplified - you may need to adapt based on your model's interface)
+            if len(items) == 0:
+                continue
+            dataset = create_test_dataset(items, model.tokenizer, max_length)
+            loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+            for batch in loader:
+                input_ids = batch['input_ids'].to(model.device)
+                attention_mask = batch['attention_mask'].to(model.device)
+                labels = batch['labels'].to(model.device)
+                # If you have region_id mapping, use it here. For now, set all to 0.
+                region_ids = torch.zeros(input_ids.size(0), dtype=torch.long).to(model.device)
                 try:
-                    # This is a placeholder - adapt based on your model's actual evaluation method
-                    loss = model.compute_loss(text, target_region)
-                    region_loss += loss.item()
-                    total_loss += loss.item()
-                    region_metrics[region]['loss'] += loss.item()
-                    region_metrics[region]['count'] += 1
+                    outputs = model(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        region_ids=region_ids,
+                        labels=labels
+                    )
+                    loss = outputs.loss
+                    region_loss += loss.item() * input_ids.size(0)
+                    total_loss += loss.item() * input_ids.size(0)
+                    region_metrics[region]['loss'] += loss.item() * input_ids.size(0)
+                    region_metrics[region]['count'] += input_ids.size(0)
                 except Exception as e:
-                    logger.warning(f"Error evaluating item: {e}")
+                    logger.warning(f"Error evaluating batch: {e}")
                     continue
-    
+
     # Calculate average losses
-    avg_loss = total_loss / len(test_data) if test_data else 0.0
-    
+    total_examples = len(test_data)
+    avg_loss = total_loss / total_examples if total_examples else 0.0
     for region in region_metrics:
         if region_metrics[region]['count'] > 0:
             region_metrics[region]['avg_loss'] = region_metrics[region]['loss'] / region_metrics[region]['count']
-    
+
     # Compile results
     results = {
         'overall': {
-            'total_examples': len(test_data),
+            'total_examples': total_examples,
             'average_loss': avg_loss
         },
         'by_region': dict(region_metrics)
     }
-    
     return results
 
 def print_evaluation_results(results: Dict):
@@ -214,7 +245,7 @@ def main():
         test_data = load_test_data()
         
         # Load trained model
-        model_path = "models/checkpoints/best_model.pth"  # Adjust path as needed
+        model_path = "models/final/geolingua_model.pth"  # Adjust path as needed
         model = load_trained_model(model_path)
         
         # Evaluate model
