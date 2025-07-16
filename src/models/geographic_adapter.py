@@ -247,25 +247,23 @@ class GeographicAdapter(nn.Module):
             Adapted hidden states
         """
         # Get geographic embeddings
-        geo_embeddings = self.geographic_embedding(region_ids, hidden_states)
-        
-        # Apply adapter transformation
+        geo_embeddings = self.geographic_embedding(region_ids, hidden_states)  # [batch, seq_len, region_embedding_dim]
+        # Adapter transformation
         adapted = self.geographic_adapter['down_proj'](hidden_states)
         adapted = self.geographic_adapter['activation'](adapted)
         adapted = self.geographic_adapter['dropout'](adapted)
         adapted = self.geographic_adapter['up_proj'](adapted)
-        
         # Residual connection
         adapted = adapted + hidden_states
-        
-        # Fuse with geographic context
-        batch_size, seq_len, hidden_dim = hidden_states.shape
-        geo_context = geo_embeddings.mean(dim=1, keepdim=True).expand(-1, seq_len, -1)
-        
+        # Use geo_embeddings directly (no pooling)
+        geo_context = geo_embeddings  # [batch, seq_len, region_embedding_dim]
+        # Debug prints (remove/comment after confirming fix)
+        # print("adapted shape:", adapted.shape)
+        # print("geo_context shape:", geo_context.shape)
         # Concatenate and fuse
-        fused_input = torch.cat([adapted, geo_context], dim=-1)
+        fused_input = torch.cat([adapted, geo_context], dim=-1)  # [batch, seq_len, hidden_dim + region_embedding_dim]
+        # print("fused_input shape:", fused_input.shape)
         final_states = self.geographic_fusion(fused_input)
-        
         return final_states
     
     def generate_with_region(self, prompt: str, region_id: int, 
