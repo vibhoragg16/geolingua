@@ -169,6 +169,10 @@ def evaluate_model(model: GeographicAdapter, test_data: List[Dict]) -> Dict:
                     )
                     batch_loss = outputs['loss']
                     print("Batch loss:", batch_loss)
+                    print("Batch input_ids:", input_ids[0])
+                    print("Batch labels:", labels[0])
+                    print("Unique label values in batch:", torch.unique(labels))
+                    print("Logits (first 5):", outputs['logits'][0, :5])
                     batch_size = input_ids.size(0)
                     total_loss += batch_loss.item() * batch_size
                     total_samples += batch_size
