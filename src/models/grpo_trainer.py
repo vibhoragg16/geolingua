@@ -52,6 +52,11 @@ class GeographicDataset(Dataset):
     
     def __init__(self, data_path: str, tokenizer, max_length: int = 512):
         self.tokenizer = tokenizer
+        # Add region tokens to tokenizer if not already present
+        region_tokens = ['[AUSTRALIA]', '[INDIA]', '[UK]', '[US_SOUTH]', '[NIGERIA]']
+        added = self.tokenizer.add_tokens(region_tokens)
+        if added > 0 and hasattr(self.tokenizer, 'model_max_length'):
+            print(f"Added {added} special region tokens to tokenizer.")
         self.max_length = max_length
         self.data = []
         self.region_to_id = {}
