@@ -127,10 +127,7 @@ class GeographicAdapter(nn.Module):
         
         # Geographic fusion layer
         self.geographic_fusion = nn.Sequential(
-            nn.Linear(
-                self.base_model.config.hidden_size + config.region_embedding_dim,
-                self.base_model.config.hidden_size
-            ),
+            nn.Linear(self.base_model.config.hidden_size * 2, self.base_model.config.hidden_size),
             nn.LayerNorm(self.base_model.config.hidden_size),
             nn.Dropout(0.1)
         )
