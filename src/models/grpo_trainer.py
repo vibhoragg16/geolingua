@@ -280,14 +280,14 @@ class GRPOTrainer:
         Compute GRPO loss with geographic regularization.
         """
         losses = {}
-        device = outputs.logits.device if hasattr(outputs, 'logits') else 'cpu'
+        device = outputs['logits'].device if 'logits' in outputs else 'cpu'
         # Base language modeling loss
-        lm_loss = outputs.loss
+        lm_loss = outputs['loss']
         losses['lm_loss'] = lm_loss
 
         # Geographic classification loss (placeholder: encourage similar representations for same region)
         # For demonstration, use variance of pooled hidden states by region
-        hidden_states = outputs.hidden_states[-1] if outputs.hidden_states is not None else None
+        hidden_states = outputs['hidden_states'] if 'hidden_states' in outputs else None
         region_ids = batch['region_id']
         geo_loss = torch.tensor(0.0, device=device)
         if hidden_states is not None:
@@ -306,8 +306,8 @@ class GRPOTrainer:
 
         # Regional balance loss (variance of per-sample LM loss by region)
         regional_balance_loss = torch.tensor(0.0, device=device)
-        if outputs.logits is not None and batch['labels'] is not None:
-            lm_logits = outputs.logits
+        if outputs['logits'] is not None and batch['labels'] is not None:
+            lm_logits = outputs['logits']
             labels = batch['labels']
             shift_logits = lm_logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
