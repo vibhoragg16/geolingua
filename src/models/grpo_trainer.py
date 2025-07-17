@@ -240,6 +240,7 @@ class FixedGRPOTrainer:
         epoch_losses = defaultdict(list)
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
         for batch_idx, batch in enumerate(progress_bar):
+            print(f"[DEBUG] Processing batch {batch_idx}", flush=True)
             try:
                 batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                         for k, v in batch.items()}
@@ -273,6 +274,7 @@ class FixedGRPOTrainer:
                 })
             except Exception as e:
                 self.logger.error(f"Error in batch {batch_idx}: {e}")
+                print(f"[DEBUG] Error in batch {batch_idx}: {e}", flush=True)
                 continue
         epoch_avg_losses = {k: np.mean(v) if v else 0.0 for k, v in epoch_losses.items()}
         return epoch_avg_losses
