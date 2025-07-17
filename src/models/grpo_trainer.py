@@ -164,6 +164,9 @@ class GeographicDataset(Dataset):
             max_length=self.max_length,
             return_tensors='pt'
         )
+        # --- DEBUG: Print min/max input_ids for this sample ---
+        print(f'[DEBUG] __getitem__ input_ids min: {encoding["input_ids"].min().item()}, max: {encoding["input_ids"].max().item()}')
+        # --- END PATCH ---
         
         return {
             'input_ids': encoding['input_ids'].squeeze(),
@@ -714,7 +717,9 @@ def main():
         # Print label and logits range for first batch
         for batch in train_loader:
             labels = batch['labels']
+            input_ids = batch['input_ids']
             print(f"[DEBUG] Labels min: {labels.min().item()}, max: {labels.max().item()}")
+            print(f"[DEBUG] Batch input_ids min: {input_ids.min().item()}, max: {input_ids.max().item()}")
             break
         return result
     trainer.train_epoch = debug_train_epoch
