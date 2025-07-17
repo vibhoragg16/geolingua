@@ -397,8 +397,9 @@ def main():
         # Print loss for each epoch
         orig_train_epoch = trainer.train_epoch
         def debug_train_epoch(train_loader, epoch):
+            print(f"[DEBUG] Starting epoch {epoch}", flush=True)
             result = orig_train_epoch(train_loader, epoch)
-            print(f"[DEBUG] End of epoch {epoch}: losses: {result}")
+            print(f"[DEBUG] End of epoch {epoch}: losses: {result}", flush=True)
             return result
         trainer.train_epoch = debug_train_epoch
         best_model_path = trainer.train(train_split, val_split)
