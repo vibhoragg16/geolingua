@@ -688,24 +688,30 @@ def main():
     # Load configuration
     config = GRPOTrainingConfig()
     
-    # Load model (you would import your GeographicAdapter here)
-    from geographic_adapter import GeographicAdapter, GeographicAdapterConfig
-    
-    model_config = GeographicAdapterConfig()
-    model = GeographicAdapter(model_config)
-    
-    # --- ADD REGION TOKENS AND RESIZE EMBEDDINGS ---
+    # --- CORRECT GPT-2 TOKENIZER/MODEL INIT ORDER ---
+    from transformers import AutoTokenizer, AutoModelForCausalLM
     region_tokens = ['[AUSTRALIA]', '[INDIA]', '[UK]', '[US_SOUTH]', '[NIGERIA]']
-    added = model.tokenizer.add_tokens(region_tokens)
+    # 1. Load tokenizer
+    tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    # 2. Add region tokens
+    added = tokenizer.add_tokens(region_tokens)
+    # 3. Load model
+    model = AutoModelForCausalLM.from_pretrained("gpt2")
+    # 4. Resize model embeddings
     if added > 0:
-        model.resize_token_embeddings(len(model.tokenizer))
-
+        model.resize_token_embeddings(len(tokenizer))
+    # 5. Print and confirm
+    print("Tokenizer vocab size:", len(tokenizer))
+    print("Model embedding size:", model.get_input_embeddings().weight.shape[0])
+    assert len(tokenizer) == model.get_input_embeddings().weight.shape[0], "Tokenizer and model embedding size mismatch!"
+    # --- END PATCH ---
+    
     # Now re-tokenize your data
     retokenize_and_save(
         input_json_path="data/raw/reddit.json",  # path to your raw data
         output_json_path="data/processed/retokenized_reddit.json",  # path to save processed data
-        tokenizer=model.tokenizer,
-        max_length=model_config.max_length
+        tokenizer=tokenizer,
+        max_length=config.max_length if hasattr(config, 'max_length') else 512
     )
     # Debug: Check max input_id in new processed file
     import json
@@ -713,14 +719,15 @@ def main():
         processed = json.load(f)
     all_ids = [id for item in processed for id in item.get('input_ids', [])]
     if all_ids:
-        print(f"[DEBUG] After re-tokenization: min input_id: {min(all_ids)}, max input_id: {max(all_ids)} (embedding size: {model.base_model.get_input_embeddings().weight.shape[0]})")
+        print(f"[DEBUG] After re-tokenization: min input_id: {min(all_ids)}, max input_id: {max(all_ids)} (embedding size: {model.get_input_embeddings().weight.shape[0]})")
+    # Use the new processed file for training!
     # --- END PATCH ---
     
     # Load datasets
     train_dataset = GeographicDataset(
         data_path="data/processed/retokenized_reddit.json",
-        tokenizer=model.tokenizer,
-        max_length=model_config.max_length
+        tokenizer=tokenizer,
+        max_length=config.max_length if hasattr(config, 'max_length') else 512
     )
     
     # --- DEBUG: Print region ID range in dataset ---
