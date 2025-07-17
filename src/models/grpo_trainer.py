@@ -646,6 +646,41 @@ class GRPOTrainer:
         plt.show()
 
 
+# Utility function to re-tokenize data after adding special tokens
+
+def retokenize_and_save(input_json_path, output_json_path, tokenizer, max_length=512):
+    """
+    Re-tokenize the data with the updated tokenizer and save to a new file.
+    Args:
+        input_json_path: Path to the raw data JSON file (list of dicts with 'input', 'region', ...)
+        output_json_path: Path to save the re-tokenized data
+        tokenizer: The updated tokenizer (with special tokens added)
+        max_length: Max sequence length for tokenization
+    """
+    import json
+    with open(input_json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    processed = []
+    for item in data:
+        text = item.get('input', '')
+        encoding = tokenizer(
+            text,
+            truncation=True,
+            padding='max_length',
+            max_length=max_length,
+            return_tensors='pt'
+        )
+        input_ids = encoding['input_ids'].squeeze().tolist()
+        # Debug: check max input_id
+        if max(input_ids) >= len(tokenizer):
+            print(f'[ERROR] Found input_id >= tokenizer vocab size: {max(input_ids)} >= {len(tokenizer)}')
+        item['input_ids'] = input_ids
+        processed.append(item)
+    with open(output_json_path, 'w', encoding='utf-8') as f:
+        json.dump(processed, f, indent=2, ensure_ascii=False)
+    print(f'[INFO] Saved re-tokenized data to {output_json_path}')
+
+
 # Example usage
 def main():
     """Main training script."""
@@ -670,8 +705,19 @@ def main():
     # --- END PATCH ---
     
     # --- DEBUG: Print vocab and embedding size ---
-    print("[DEBUG] Tokenizer vocab size:", len(model.tokenizer))
-    print("[DEBUG] Model embedding size:", model.base_model.get_input_embeddings().weight.shape[0])
+    print("Tokenizer vocab size:", len(model.tokenizer))
+    print("Model embedding size:", model.base_model.get_input_embeddings().weight.shape[0])
+    # --- END PATCH ---
+    
+    # --- RE-TOKENIZE RAW DATA IF NEEDED ---
+    # (Uncomment and set correct paths to use)
+    # retokenize_and_save(
+    #     input_json_path="data/raw/reddit.json",  # path to your raw data
+    #     output_json_path="data/processed/retokenized_reddit.json",  # path to save processed data
+    #     tokenizer=model.tokenizer,
+    #     max_length=model_config.max_length
+    # )
+    # Use the new processed file for training!
     # --- END PATCH ---
     
     # Load datasets
