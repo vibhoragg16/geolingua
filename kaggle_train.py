@@ -323,7 +323,22 @@ def train_model(model: torch.nn.Module, processed_data: List[Dict], config: Dict
         model=model,
         config=trainer_config
     )
-    
+    # --- DEBUG PRINTS ---
+    num_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Trainable parameters: {num_trainable}")
+    print(f"Train dataset size: {len(train_dataset)}")
+    print(f"Batch size: {trainer_config.batch_size}")
+    print(f"Steps per epoch: {len(train_dataset) // trainer_config.batch_size}")
+    print(f"Epochs: {trainer_config.num_epochs}")
+    # Print loss for each epoch
+    orig_train_epoch = trainer.train_epoch
+    def debug_train_epoch(train_loader, epoch):
+        print(f"[DEBUG] Starting epoch {epoch}", flush=True)
+        result = orig_train_epoch(train_loader, epoch)
+        print(f"[DEBUG] End of epoch {epoch}: losses: {result}", flush=True)
+        return result
+    trainer.train_epoch = debug_train_epoch
+    # --- END DEBUG PRINTS ---
     # Start training
     best_model_path = trainer.train(train_dataset, val_dataset)
     
