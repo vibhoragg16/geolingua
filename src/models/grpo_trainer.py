@@ -196,8 +196,13 @@ class FixedGRPOTrainer:
     def compute_safe_grpo_loss(self, outputs, batch):
         losses = {}
         device = next(self.model.parameters()).device
-        if 'loss' in outputs:
+        # Use the model's returned losses if available
+        if 'lm_loss' in outputs and 'geo_loss' in outputs:
+            lm_loss = outputs['lm_loss']
+            geo_loss = outputs['geo_loss']
+        elif 'loss' in outputs:
             lm_loss = outputs['loss']
+            geo_loss = torch.tensor(0.0, device=device)
         else:
             logits = outputs['logits']
             labels = batch['labels']
@@ -215,10 +220,8 @@ class FixedGRPOTrainer:
                 shift_labels.view(-1),
                 ignore_index=self.model.tokenizer.pad_token_id if hasattr(self.model, 'tokenizer') else -100
             )
+            geo_loss = torch.tensor(0.0, device=device)
         losses['lm_loss'] = lm_loss
-        geo_loss = torch.tensor(0.0, device=device)
-        if hasattr(self.model, 'region_embeddings'):
-            geo_loss = self.model.region_embeddings.weight.norm(p=2) * 0.01
         losses['geo_loss'] = geo_loss
         regional_balance_loss = torch.tensor(0.0, device=device)
         region_ids = batch['region_id']
@@ -240,7 +243,6 @@ class FixedGRPOTrainer:
         epoch_losses = defaultdict(list)
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
         for batch_idx, batch in enumerate(progress_bar):
-            print(f"[DEBUG] Processing batch {batch_idx}", flush=True)
             try:
                 batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                         for k, v in batch.items()}
@@ -275,7 +277,6 @@ class FixedGRPOTrainer:
                 })
             except Exception as e:
                 self.logger.error(f"Error in batch {batch_idx}: {e}")
-                print(f"[DEBUG] Error in batch {batch_idx}: {e}", flush=True)
                 continue
         epoch_avg_losses = {k: np.mean(v) if v else 0.0 for k, v in epoch_losses.items()}
         return epoch_avg_losses
@@ -400,9 +401,7 @@ def main():
         # Print loss for each epoch
         orig_train_epoch = trainer.train_epoch
         def debug_train_epoch(train_loader, epoch):
-            print(f"[DEBUG] Starting epoch {epoch}", flush=True)
             result = orig_train_epoch(train_loader, epoch)
-            print(f"[DEBUG] End of epoch {epoch}: losses: {result}", flush=True)
             return result
         trainer.train_epoch = debug_train_epoch
         best_model_path = trainer.train(train_split, val_split)
