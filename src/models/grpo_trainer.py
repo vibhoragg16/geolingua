@@ -248,6 +248,7 @@ class FixedGRPOTrainer:
                 outputs = self.model(
                     input_ids=batch['input_ids'],
                     attention_mask=batch['attention_mask'],
+                    region_ids=batch['region_id'],
                     labels=batch['labels'],
                     output_hidden_states=True
                 )
