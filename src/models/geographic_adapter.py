@@ -166,7 +166,7 @@ class GeographicAdapter(nn.Module):
     
     def forward(self, input_ids: torch.Tensor, 
                 attention_mask: torch.Tensor,
-                region_ids: torch.Tensor,
+                region_ids: torch.Tensor = None,
                 labels: Optional[torch.Tensor] = None,
                 **kwargs) -> Dict[str, torch.Tensor]:
         """
