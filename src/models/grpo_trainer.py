@@ -654,6 +654,16 @@ def main():
     model_config = GeographicAdapterConfig()
     model = GeographicAdapter(model_config)
     
+    # --- ADD REGION TOKENS AND RESIZE EMBEDDINGS ---
+    region_tokens = ['[AUSTRALIA]', '[INDIA]', '[UK]', '[US_SOUTH]', '[NIGERIA]']
+    added = model.tokenizer.add_tokens(region_tokens)
+    if added > 0:
+        print(f"[INFO] Added {added} region tokens to tokenizer. Resizing model embeddings...")
+        model.resize_token_embeddings(len(model.tokenizer))
+    else:
+        print("[INFO] Region tokens already present in tokenizer.")
+    # --- END PATCH ---
+    
     # Load datasets
     train_dataset = GeographicDataset(
         data_path="data/raw/reddit",
@@ -683,6 +693,19 @@ def main():
     
     # Initialize trainer
     trainer = GRPOTrainer(model, config)
+    
+    # --- DEBUG: Print label and logits range in train_epoch ---
+    orig_train_epoch = trainer.train_epoch
+    def debug_train_epoch(train_loader, epoch):
+        result = orig_train_epoch(train_loader, epoch)
+        # Print label and logits range for first batch
+        for batch in train_loader:
+            labels = batch['labels']
+            print(f"[DEBUG] Labels min: {labels.min().item()}, max: {labels.max().item()}")
+            break
+        return result
+    trainer.train_epoch = debug_train_epoch
+    # --- END PATCH ---
     
     # Start training
     trainer.train(train_dataset, val_dataset)
