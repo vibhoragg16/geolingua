@@ -15,6 +15,8 @@ import logging
 from dataclasses import dataclass
 from collections import defaultdict
 import matplotlib.pyplot as plt
+import os
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 @dataclass
 class GRPOTrainingConfig:
@@ -664,12 +666,23 @@ def main():
         print("[INFO] Region tokens already present in tokenizer.")
     # --- END PATCH ---
     
+    # --- DEBUG: Print vocab and embedding size ---
+    print("[DEBUG] Tokenizer vocab size:", len(model.tokenizer))
+    print("[DEBUG] Model embedding size:", model.base_model.get_input_embeddings().weight.shape[0])
+    # --- END PATCH ---
+    
     # Load datasets
     train_dataset = GeographicDataset(
         data_path="data/raw/reddit",
         tokenizer=model.tokenizer,
         max_length=model_config.max_length
     )
+    
+    # --- DEBUG: Print region ID range in dataset ---
+    all_region_ids = [item['region_id'] for item in train_dataset.data]
+    if all_region_ids:
+        print(f"[DEBUG] Region ID min: {min(all_region_ids)}, max: {max(all_region_ids)}")
+    # --- END PATCH ---
     
     # Split dataset for validation (simple split for demo)
     train_size = int(0.9 * len(train_dataset))
