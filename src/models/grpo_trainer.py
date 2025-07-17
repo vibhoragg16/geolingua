@@ -155,7 +155,11 @@ class FixedGRPOTrainer:
     def validate_model_setup(self):
         if hasattr(self.model, 'tokenizer'):
             tokenizer_vocab_size = len(self.model.tokenizer)
-            model_vocab_size = self.model.get_input_embeddings().weight.shape[0]
+            # Use base_model for embedding size if present
+            if hasattr(self.model, 'base_model'):
+                model_vocab_size = self.model.base_model.get_input_embeddings().weight.shape[0]
+            else:
+                model_vocab_size = self.model.get_input_embeddings().weight.shape[0]
             if tokenizer_vocab_size != model_vocab_size:
                 raise ValueError(f"Tokenizer vocab size ({tokenizer_vocab_size}) != model vocab size ({model_vocab_size})")
             self.logger.info(f"Model validation passed: vocab size = {model_vocab_size}")
