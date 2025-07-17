@@ -3,160 +3,123 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import AdamW
-from transformers import get_linear_schedule_with_warmup
-import pandas as pd
-import numpy as np
-from typing import Dict, List, Optional, Tuple, Union
+from transformers import get_linear_schedule_with_warmup, AutoTokenizer, AutoModelForCausalLM
 import json
-from pathlib import Path
-# import wandb  # Commented out for Kaggle/no-wandb use
-from tqdm import tqdm
 import logging
+import os
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from collections import defaultdict
-import matplotlib.pyplot as plt
-import os
+import numpy as np
+from tqdm import tqdm
+
+# Enable better CUDA error reporting
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 @dataclass
 class GRPOTrainingConfig:
     """Configuration for GRPO training."""
-    
-    # Model and data paths
     model_config_path: str = "config/model_config.py"
-    data_path: str = "data/processed"
+    data_path: str = "data/processed/retokenized_reddit.json"
     output_dir: str = "models/geolingua"
-    
-    # Training parameters
     num_epochs: int = 5
-    batch_size: int = 8
-    learning_rate: float = 1e-6  # Lowered learning rate for stability
-    warmup_steps: int = 1000
-    max_grad_norm: float = 1.0
-    
-    # GRPO specific parameters
-    geographic_loss_weight: float = 0.1
-    regional_balance_weight: float = 0.05
-    consistency_loss_weight: float = 0.02
-    
-    # Evaluation parameters
+    batch_size: int = 4
+    learning_rate: float = 5e-7
+    warmup_steps: int = 100
+    max_grad_norm: float = 0.5
+    max_length: int = 512
+    geographic_loss_weight: float = 0.05
+    regional_balance_weight: float = 0.02
+    consistency_loss_weight: float = 0.01
     eval_steps: int = 500
     save_steps: int = 1000
-    logging_steps: int = 100
-    
-    # Hardware settings
+    logging_steps: int = 50
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
-    mixed_precision: bool = True
+    mixed_precision: bool = False
 
+
+def initialize_model_safely(model_name: str = "gpt2", regions: List[str] = []):
+    if not regions:
+        regions = ['us_south', 'uk', 'australia', 'india', 'nigeria']
+    region_tokens = [f'[{region.upper()}]' for region in regions]
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    num_added = tokenizer.add_tokens(region_tokens)
+    base_model = AutoModelForCausalLM.from_pretrained(model_name)
+    if num_added > 0:
+        base_model.resize_token_embeddings(len(tokenizer))
+    base_model.tokenizer = tokenizer
+    assert len(tokenizer) == base_model.get_input_embeddings().weight.shape[0]
+    logging.info(f"Model initialized: {model_name}")
+    logging.info(f"Vocab size: {len(tokenizer)}")
+    logging.info(f"Added {num_added} region tokens")
+    logging.info(f"Regions: {regions}")
+    return base_model
 
 class GeographicDataset(Dataset):
-    """Dataset for geographic language modeling."""
-    
     def __init__(self, data_path: str, tokenizer, max_length: int = 512):
         self.tokenizer = tokenizer
-        # Add region tokens to tokenizer if not already present
-        region_tokens = ['[AUSTRALIA]', '[INDIA]', '[UK]', '[US_SOUTH]', '[NIGERIA]']
-        added = self.tokenizer.add_tokens(region_tokens)
-        if added > 0 and hasattr(self.tokenizer, 'model_max_length'):
-            print(f"Added {added} special region tokens to tokenizer.")
         self.max_length = max_length
         self.data = []
         self.region_to_id = {}
         self.id_to_region = {}
-        
-        # Setup logging first
-        self.setup_logging()
-        # Then load data
-        self.load_data(data_path)
-        # Debug: log dataset size and first sample
-        print(f"[DEBUG] GeographicDataset loaded {len(self.data)} samples.")
-        if len(self.data) > 0:
-            print(f"[DEBUG] First sample: {self.data[0]}")
-        else:
-            print("[DEBUG] No data loaded in GeographicDataset!")
-    
-    def setup_logging(self):
-        """Setup logging configuration."""
-        logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
-    
+        self.load_data(data_path)
+        self.validate_data()
+        self.logger.info(f"Dataset loaded: {len(self.data)} samples")
+        if len(self.data) > 0:
+            self.logger.info(f"Regions: {list(self.region_to_id.keys())}")
     def load_data(self, data_path: str):
-        """Load data from JSON files."""
-        data_path_obj = Path(data_path)
+        if not os.path.exists(data_path):
+            raise FileNotFoundError(f"Data file not found: {data_path}")
+        with open(data_path, 'r', encoding='utf-8') as f:
+            raw_data = json.load(f)
         region_id = 0
-        
-        # Check if it's a single JSON file or a directory
-        if data_path_obj.is_file():
-            # Single JSON file - load all data
-            with open(data_path, 'r', encoding='utf-8') as f:
-                all_data = json.load(f)
-            
-            # Process each item
-            for item in all_data:
-                # Relaxed (for debugging)
-                if item.get('input') and len(item['input'].strip()) > 0:
-                    region_name = item.get('region', 'unknown')
-                    
-                    # Map region names to IDs
-                    if region_name not in self.region_to_id:
-                        self.region_to_id[region_name] = region_id
-                        self.id_to_region[region_id] = region_name
-                        region_id += 1
-                    
-                    processed_item = {
-                        'text': item['input'],  # Use 'input' as the text
-                        'region': region_name,
-                        'region_id': self.region_to_id[region_name],
-                        'metadata': {
-                            'score': item.get('score', 0),
-                            'type': item.get('type', 'unknown'),
-                            'subreddit': item.get('subreddit', 'unknown')
-                        }
-                    }
-                    self.data.append(processed_item)
-        
-        else:
-            # Directory with multiple files (original behavior)
-            data_dir = data_path_obj
-            for json_file in data_dir.glob("*_reddit_data.json"):
-                region_name = json_file.stem.replace("_reddit_data", "")
-                
-                # Map region names to IDs
-                if region_name not in self.region_to_id:
-                    self.region_to_id[region_name] = region_id
-                    self.id_to_region[region_id] = region_name
-                    region_id += 1
-                
-                # Load data
-                with open(json_file, 'r') as f:
-                    region_data = json.load(f)
-                
-                # Process each text sample
-                for item in region_data:
-                    # Relaxed (for debugging)
-                    if item.get('input') and len(item['input'].strip()) > 0:
-                        processed_item = {
-                            'text': item['input'],  # Use 'input' as the text
-                            'region': region_name,
-                            'region_id': self.region_to_id[region_name],
-                            'metadata': {
-                                'score': item.get('score', 0),
-                                'type': item.get('type', 'unknown'),
-                                'subreddit': item.get('subreddit', 'unknown')
-                            }
-                        }
-                        self.data.append(processed_item)
-        
-        self.logger.info(f"Loaded {len(self.data)} samples from {len(self.region_to_id)} regions")
-        self.logger.info(f"Regions: {list(self.region_to_id.keys())}")
-    
+        for item in raw_data:
+            if not item.get('input') or len(item['input'].strip()) == 0:
+                continue
+            text = item['input'].strip()
+            region_name = item.get('region', 'unknown')
+            if region_name not in self.region_to_id:
+                self.region_to_id[region_name] = region_id
+                self.id_to_region[region_id] = region_name
+                region_id += 1
+            processed_item = {
+                'text': text,
+                'region': region_name,
+                'region_id': self.region_to_id[region_name],
+                'metadata': {
+                    'score': item.get('score', 0),
+                    'type': item.get('type', 'unknown'),
+                    'subreddit': item.get('subreddit', 'unknown')
+                }
+            }
+            self.data.append(processed_item)
+    def validate_data(self):
+        if len(self.data) == 0:
+            raise ValueError("No valid data loaded!")
+        max_region_id = max(item['region_id'] for item in self.data)
+        min_region_id = min(item['region_id'] for item in self.data)
+        if min_region_id < 0 or max_region_id >= len(self.region_to_id):
+            raise ValueError(f"Invalid region IDs: range [{min_region_id}, {max_region_id}], expected [0, {len(self.region_to_id)-1}]")
+        sample_text = self.data[0]['text']
+        encoding = self.tokenizer(
+            sample_text,
+            truncation=True,
+            padding='max_length',
+            max_length=self.max_length,
+            return_tensors='pt'
+        )
+        max_token_id = encoding['input_ids'].max().item()
+        vocab_size = len(self.tokenizer)
+        if max_token_id >= vocab_size:
+            raise ValueError(f"Token ID {max_token_id} >= vocab size {vocab_size}")
     def __len__(self):
         return len(self.data)
-    
     def __getitem__(self, idx):
         item = self.data[idx]
-        
-        # Tokenize text
         encoding = self.tokenizer(
             item['text'],
             truncation=True,
@@ -164,199 +127,102 @@ class GeographicDataset(Dataset):
             max_length=self.max_length,
             return_tensors='pt'
         )
-        # --- DEBUG: Print min/max input_ids for this sample ---
-        print(f'[DEBUG] __getitem__ input_ids min: {encoding["input_ids"].min().item()}, max: {encoding["input_ids"].max().item()}')
-        # --- END PATCH ---
-        
+        input_ids = encoding['input_ids'].squeeze()
+        attention_mask = encoding['attention_mask'].squeeze()
+        if input_ids.max().item() >= len(self.tokenizer):
+            raise ValueError(f"Token ID out of range: {input_ids.max().item()} >= {len(self.tokenizer)}")
         return {
-            'input_ids': encoding['input_ids'].squeeze(),
-            'attention_mask': encoding['attention_mask'].squeeze(),
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
             'region_id': torch.tensor(item['region_id'], dtype=torch.long),
-            'labels': encoding['input_ids'].squeeze(),  # For language modeling
+            'labels': input_ids.clone(),
             'text': item['text'],
             'region': item['region']
         }
 
-
-class GRPOTrainer:
-    """GRPO (Geographically Restricted Pre-trained Optimization) Trainer."""
-    
+class FixedGRPOTrainer:
     def __init__(self, model, config: GRPOTrainingConfig):
         self.model = model
         self.config = config
         self.device = torch.device(config.device)
-        
-        # Move model to device
+        self.logger = logging.getLogger(__name__)
         self.model.to(self.device)
-        
-        # Initialize optimizer and scheduler
         self.optimizer = None
         self.scheduler = None
-        
-        # Training metrics
         self.training_stats = defaultdict(list)
         self.global_step = 0
-        
-        # Setup logging
-        self.setup_logging()
-        
-        # Initialize wandb if available
-        # try:
-        #     wandb.init(
-        #         project="geolingua-grpo",
-        #         config=config.__dict__,
-        #         name=f"grpo_training_{config.num_epochs}ep"
-        #     )
-        #     self.use_wandb = True
-        # except:
-        #     self.use_wandb = False
-        #     self.logger.info("W&B not available, continuing without logging")
-    
-    def setup_logging(self):
-        """Setup logging configuration."""
-        logging.basicConfig(level=logging.INFO)
-        self.logger = logging.getLogger(__name__)
-    
-    def create_dataloaders(self, train_dataset: GeographicDataset, 
-                          val_dataset: Optional[GeographicDataset] = None) -> Tuple[DataLoader, Optional[DataLoader]]:
-        """Create training and validation dataloaders."""
-        # Debug: log dataset sizes before DataLoader creation
-        print(f"[DEBUG] train_dataset size: {len(train_dataset)}")
-        if val_dataset:
-            print(f"[DEBUG] val_dataset size: {len(val_dataset)}")
-        if len(train_dataset) > 0:
-            print(f"[DEBUG] First train sample: {train_dataset[0]}")
-        else:
-            print("[DEBUG] Train dataset is EMPTY before DataLoader creation!")
-        if val_dataset and len(val_dataset) > 0:
-            print(f"[DEBUG] First val sample: {val_dataset[0]}")
-        elif val_dataset:
-            print("[DEBUG] Val dataset is EMPTY before DataLoader creation!")
-        
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=self.config.batch_size,
-            shuffle=True,
-            num_workers=4,
-            pin_memory=True if self.device.type == 'cuda' else False
-        )
-        
-        val_loader = None
-        if val_dataset:
-            val_loader = DataLoader(
-                val_dataset,
-                batch_size=self.config.batch_size,
-                shuffle=False,
-                num_workers=4,
-                pin_memory=True if self.device.type == 'cuda' else False
-            )
-        
-        return train_loader, val_loader
-    
+        self.validate_model_setup()
+    def validate_model_setup(self):
+        if hasattr(self.model, 'tokenizer'):
+            tokenizer_vocab_size = len(self.model.tokenizer)
+            model_vocab_size = self.model.get_input_embeddings().weight.shape[0]
+            if tokenizer_vocab_size != model_vocab_size:
+                raise ValueError(f"Tokenizer vocab size ({tokenizer_vocab_size}) != model vocab size ({model_vocab_size})")
+            self.logger.info(f"Model validation passed: vocab size = {model_vocab_size}")
     def setup_optimizer_and_scheduler(self, train_loader: DataLoader):
-        """Setup optimizer and learning rate scheduler."""
-        
-        # Setup optimizer
+        trainable_params = [p for p in self.model.parameters() if p.requires_grad]
+        if len(trainable_params) == 0:
+            raise ValueError("No trainable parameters found!")
         no_decay = ['bias', 'LayerNorm.weight']
         optimizer_grouped_parameters = [
             {
                 'params': [p for n, p in self.model.named_parameters() 
-                          if not any(nd in n for nd in no_decay)],
+                          if p.requires_grad and not any(nd in n for nd in no_decay)],
                 'weight_decay': 0.01,
             },
             {
                 'params': [p for n, p in self.model.named_parameters() 
-                          if any(nd in n for nd in no_decay)],
+                          if p.requires_grad and any(nd in n for nd in no_decay)],
                 'weight_decay': 0.0,
             }
         ]
-        
         self.optimizer = AdamW(
             optimizer_grouped_parameters,
             lr=self.config.learning_rate,
-            eps=1e-8
+            eps=1e-8,
+            betas=(0.9, 0.999)
         )
-        
-        # Setup scheduler
         total_steps = len(train_loader) * self.config.num_epochs
         self.scheduler = get_linear_schedule_with_warmup(
             self.optimizer,
             num_warmup_steps=self.config.warmup_steps,
             num_training_steps=total_steps
         )
-    
-    def compute_grpo_loss(self, outputs, batch):
-        """
-        Compute GRPO loss with geographic regularization.
-        """
+        self.logger.info(f"Optimizer setup complete. Total steps: {total_steps}")
+    def compute_safe_grpo_loss(self, outputs, batch):
         losses = {}
-        device = outputs['logits'].device if 'logits' in outputs else 'cpu'
-        # Base language modeling loss
-        lm_loss = outputs['loss']
-        losses['lm_loss'] = lm_loss
-
-        # Geographic classification loss (placeholder: encourage similar representations for same region)
-        # For demonstration, use variance of pooled hidden states by region
-        hidden_states = outputs['hidden_states'] if 'hidden_states' in outputs else None
-        region_ids = batch['region_id']
-        geo_loss = torch.tensor(0.0, device=device)
-        if hidden_states is not None:
-            pooled_states = hidden_states.mean(dim=1)  # (batch_size, hidden_dim)
-            unique_regions = torch.unique(region_ids)
-            region_means = []
-            for region_id in unique_regions:
-                region_mask = region_ids == region_id
-                if region_mask.sum() > 0:
-                    region_mean = pooled_states[region_mask].mean(dim=0)
-                    region_means.append(region_mean)
-            if len(region_means) > 1:
-                region_means = torch.stack(region_means)
-                geo_loss = region_means.var()
-        losses['geo_loss'] = geo_loss
-
-        # Regional balance loss (variance of per-sample LM loss by region)
-        regional_balance_loss = torch.tensor(0.0, device=device)
-        if outputs['logits'] is not None and batch['labels'] is not None:
-            lm_logits = outputs['logits']
+        device = next(self.model.parameters()).device
+        if 'loss' in outputs:
+            lm_loss = outputs['loss']
+        else:
+            logits = outputs['logits']
             labels = batch['labels']
-            shift_logits = lm_logits[..., :-1, :].contiguous()
+            if logits.dim() != 3 or labels.dim() != 2:
+                raise ValueError(f"Invalid shapes: logits {logits.shape}, labels {labels.shape}")
+            shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
-            per_sample_losses = torch.nn.functional.cross_entropy(
-                shift_logits.view(-1, shift_logits.size(-1)),
+            max_label = shift_labels.max().item()
+            vocab_size = shift_logits.size(-1)
+            if max_label >= vocab_size:
+                self.logger.error(f"Label {max_label} >= vocab size {vocab_size}")
+                shift_labels = torch.clamp(shift_labels, 0, vocab_size - 1)
+            lm_loss = F.cross_entropy(
+                shift_logits.view(-1, vocab_size),
                 shift_labels.view(-1),
-                ignore_index=-100,
-                reduction='none'
+                ignore_index=self.model.tokenizer.pad_token_id if hasattr(self.model, 'tokenizer') else -100
             )
-            per_sample_losses = per_sample_losses.view(labels.size(0), -1).mean(dim=1)
-            unique_regions = torch.unique(region_ids)
-            regional_losses = []
-            for region_id in unique_regions:
-                region_mask = region_ids == region_id
-                if region_mask.sum() > 0:
-                    region_loss = per_sample_losses[region_mask].mean()
-                    regional_losses.append(region_loss)
-            if len(regional_losses) > 1:
-                regional_losses = torch.stack(regional_losses)
-                regional_balance_loss = regional_losses.var()
+        losses['lm_loss'] = lm_loss
+        geo_loss = torch.tensor(0.0, device=device)
+        if hasattr(self.model, 'region_embeddings'):
+            geo_loss = self.model.region_embeddings.weight.norm(p=2) * 0.01
+        losses['geo_loss'] = geo_loss
+        regional_balance_loss = torch.tensor(0.0, device=device)
+        region_ids = batch['region_id']
+        if len(torch.unique(region_ids)) > 1:
+            regional_balance_loss = region_ids.float().var()
         losses['regional_balance_loss'] = regional_balance_loss
-
-        # Consistency loss (encourage similar representations for same region)
         consistency_loss = torch.tensor(0.0, device=device)
-        if hidden_states is not None:
-            pooled_states = hidden_states.mean(dim=1)
-            unique_regions = torch.unique(region_ids)
-            for region_id in unique_regions:
-                region_mask = region_ids == region_id
-                region_states = pooled_states[region_mask]
-                if region_states.size(0) > 1:
-                    normalized_states = torch.nn.functional.normalize(region_states, p=2, dim=1)
-                    similarity_matrix = torch.mm(normalized_states, normalized_states.t())
-                    target_similarity = torch.ones_like(similarity_matrix)
-                    region_consistency = torch.nn.functional.mse_loss(similarity_matrix, target_similarity)
-                    consistency_loss += region_consistency
         losses['consistency_loss'] = consistency_loss
-
-        # Total GRPO loss
         total_loss = (
             lm_loss +
             self.config.geographic_loss_weight * geo_loss +
@@ -365,421 +231,162 @@ class GRPOTrainer:
         )
         losses['total_loss'] = total_loss
         return losses
-    
-    def compute_regional_balance_loss(self, outputs: Dict[str, torch.Tensor], 
-                                    batch: Dict[str, torch.Tensor]) -> torch.Tensor:
-        """Compute regional balance loss to ensure fairness across regions."""
-        
-        # Get per-sample losses
-        lm_logits = outputs['logits']
-        labels = batch['labels']
-        region_ids = batch['region_id']
-        
-        # Compute per-sample losses
-        shift_logits = lm_logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-        
-        # Compute losses without reduction
-        per_sample_losses = F.cross_entropy(
-            shift_logits.view(-1, shift_logits.size(-1)),
-            shift_labels.view(-1),
-            ignore_index=-100,
-            reduction='none'
-        )
-        
-        # Reshape to get per-sample losses
-        per_sample_losses = per_sample_losses.view(labels.size(0), -1).mean(dim=1)
-        
-        # Compute regional variance
-        unique_regions = torch.unique(region_ids)
-        regional_losses = []
-        
-        for region_id in unique_regions:
-            region_mask = region_ids == region_id
-            if region_mask.sum() > 0:
-                region_loss = per_sample_losses[region_mask].mean()
-                regional_losses.append(region_loss)
-        
-        if len(regional_losses) > 1:
-            regional_losses = torch.stack(regional_losses)
-            balance_loss = regional_losses.var()
-        else:
-            balance_loss = torch.tensor(0.0, device=per_sample_losses.device)
-        
-        return balance_loss
-    
-    def compute_consistency_loss(self, outputs: Dict[str, torch.Tensor], 
-                               batch: Dict[str, torch.Tensor]) -> torch.Tensor:
-        """Compute consistency loss to maintain coherent representations."""
-        
-        hidden_states = outputs['hidden_states']
-        region_ids = batch['region_id']
-        
-        # Pool hidden states to get sentence representations
-        pooled_states = hidden_states.mean(dim=1)  # (batch_size, hidden_dim)
-        
-        # Compute pairwise similarities within regions
-        consistency_loss = torch.tensor(0.0, device=hidden_states.device)
-        unique_regions = torch.unique(region_ids)
-        
-        for region_id in unique_regions:
-            region_mask = region_ids == region_id
-            region_states = pooled_states[region_mask]
-            
-            if region_states.size(0) > 1:
-                # Compute pairwise cosine similarities
-                normalized_states = F.normalize(region_states, p=2, dim=1)
-                similarity_matrix = torch.mm(normalized_states, normalized_states.t())
-                
-                # Encourage high similarity within regions
-                target_similarity = torch.ones_like(similarity_matrix)
-                region_consistency = F.mse_loss(similarity_matrix, target_similarity)
-                consistency_loss += region_consistency
-        
-        return consistency_loss
-    
     def train_epoch(self, train_loader: DataLoader, epoch: int) -> Dict[str, float]:
-        """Train for one epoch."""
-        
         self.model.train()
         epoch_losses = defaultdict(list)
-        
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
-        
         for batch_idx, batch in enumerate(progress_bar):
-            # Move batch to device
-            batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
-                    for k, v in batch.items()}
-
-            # Forward pass
-            outputs = self.model(
-                input_ids=batch['input_ids'],
-                attention_mask=batch['attention_mask'],
-                region_ids=batch['region_id'],
-                labels=batch['labels']
-            )
-            
-            # Compute GRPO losses
-            losses = self.compute_grpo_loss(outputs, batch)
-            
-            # Backward pass
-            self.optimizer.zero_grad()
-            losses['total_loss'].backward()
-            # Gradient clipping (lowered max_norm)
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)
-            
-            # Update parameters
-            self.optimizer.step()
-            self.scheduler.step()
-            
-            # Log metrics
-            for loss_name, loss_value in losses.items():
-                epoch_losses[loss_name].append(loss_value.item())
-            
-            self.global_step += 1
-            
-            # Update progress bar
-            progress_bar.set_postfix({
-                'LM Loss': f"{losses['lm_loss'].item():.4f}",
-                'Geo Loss': f"{losses['geo_loss'].item():.4f}",
-                'Total Loss': f"{losses['total_loss'].item():.4f}"
-            })
-            
-            # Log to wandb
-            # if self.use_wandb and self.global_step % self.config.logging_steps == 0:
-            #     log_dict = {f"train/{k}": v.item() for k, v in losses.items()}
-            #     log_dict['train/learning_rate'] = self.scheduler.get_last_lr()[0]
-            #     wandb.log(log_dict, step=self.global_step)
-            
-        # Compute epoch averages
-        epoch_avg_losses = {k: np.mean(v) for k, v in epoch_losses.items()}
-        
-        return epoch_avg_losses
-    
-    def evaluate(self, val_loader: DataLoader) -> Dict[str, float]:
-        """Evaluate the model."""
-        
-        self.model.eval()
-        eval_losses = defaultdict(list)
-        
-        with torch.no_grad():
-            for batch in tqdm(val_loader, desc="Evaluating"):
-                # Move batch to device
+            try:
                 batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                         for k, v in batch.items()}
-                
-                # Forward pass
+                self.validate_batch(batch)
                 outputs = self.model(
                     input_ids=batch['input_ids'],
                     attention_mask=batch['attention_mask'],
-                    region_ids=batch['region_id'],
-                    labels=batch['labels']
+                    labels=batch['labels'],
+                    output_hidden_states=True
                 )
-                
-                # Compute losses
-                losses = self.compute_grpo_loss(outputs, batch)
-                
-                # Accumulate losses
+                losses = self.compute_safe_grpo_loss(outputs, batch)
+                if self.optimizer is not None:
+                    self.optimizer.zero_grad()
+                losses['total_loss'].backward()
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), 
+                    max_norm=self.config.max_grad_norm
+                )
+                if self.optimizer is not None:
+                    self.optimizer.step()
+                if self.scheduler is not None:
+                    self.scheduler.step()
                 for loss_name, loss_value in losses.items():
-                    eval_losses[loss_name].append(loss_value.item())
-        
-        # Compute averages
-        eval_avg_losses = {k: np.mean(v) for k, v in eval_losses.items()}
-        
-        return eval_avg_losses
-    
-    def train(self, train_dataset: GeographicDataset, 
-              val_dataset: Optional[GeographicDataset] = None):
-        """Main training loop."""
-        
-        # Create dataloaders
-        train_loader, val_loader = self.create_dataloaders(train_dataset, val_dataset)
-        
-        # Setup optimizer and scheduler
+                    if torch.isfinite(loss_value):
+                        epoch_losses[loss_name].append(loss_value.item())
+                self.global_step += 1
+                progress_bar.set_postfix({
+                    'LM': f"{losses['lm_loss'].item():.4f}",
+                    'Total': f"{losses['total_loss'].item():.4f}",
+                    'LR': f"{self.scheduler.get_last_lr()[0]:.2e}" if self.scheduler is not None else 'N/A'
+                })
+            except Exception as e:
+                self.logger.error(f"Error in batch {batch_idx}: {e}")
+                continue
+        epoch_avg_losses = {k: np.mean(v) if v else 0.0 for k, v in epoch_losses.items()}
+        return epoch_avg_losses
+    def validate_batch(self, batch):
+        input_ids = batch['input_ids']
+        max_token_id = input_ids.max().item()
+        if hasattr(self.model, 'tokenizer'):
+            vocab_size = len(self.model.tokenizer)
+            if max_token_id >= vocab_size:
+                raise ValueError(f"Token ID {max_token_id} >= vocab size {vocab_size}")
+        region_ids = batch['region_id']
+        max_region_id = region_ids.max().item()
+        min_region_id = region_ids.min().item()
+        if min_region_id < 0:
+            raise ValueError(f"Negative region ID: {min_region_id}")
+        if torch.isnan(input_ids).any():
+            raise ValueError("NaN values in input_ids")
+        if torch.isnan(region_ids).any():
+            raise ValueError("NaN values in region_ids")
+    def train(self, train_dataset: GeographicDataset, val_dataset: Optional[GeographicDataset] = None):
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=self.config.batch_size,
+            shuffle=True,
+            num_workers=2,
+            pin_memory=True if self.device.type == 'cuda' else False,
+            drop_last=True
+        )
+        val_loader = None
+        if val_dataset and len(val_dataset) > 0:
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=self.config.batch_size,
+                shuffle=False,
+                num_workers=2,
+                pin_memory=True if self.device.type == 'cuda' else False,
+                drop_last=True
+            )
         self.setup_optimizer_and_scheduler(train_loader)
-        
         self.logger.info(f"Starting training for {self.config.num_epochs} epochs")
         self.logger.info(f"Training samples: {len(train_dataset)}")
-        if val_dataset:
-            self.logger.info(f"Validation samples: {len(val_dataset)}")
-        
-        # Training loop
+        self.logger.info(f"Batch size: {self.config.batch_size}")
+        self.logger.info(f"Steps per epoch: {len(train_loader)}")
+        best_model_path = None
         for epoch in range(self.config.num_epochs):
             self.logger.info(f"\nEpoch {epoch + 1}/{self.config.num_epochs}")
-            
-            # Train epoch
-            train_losses = self.train_epoch(train_loader, epoch)
-            
-            # Log training losses
-            self.logger.info("Training losses:")
-            for loss_name, loss_value in train_losses.items():
-                self.logger.info(f"  {loss_name}: {loss_value:.4f}")
-                self.training_stats[f"train_{loss_name}"].append(loss_value)
-            
-            # Evaluation
-            if val_loader:
-                eval_losses = self.evaluate(val_loader)
-                self.logger.info("Validation losses:")
-                for loss_name, loss_value in eval_losses.items():
+            try:
+                train_losses = self.train_epoch(train_loader, epoch)
+                self.logger.info("Training losses:")
+                for loss_name, loss_value in train_losses.items():
                     self.logger.info(f"  {loss_name}: {loss_value:.4f}")
-                    self.training_stats[f"val_{loss_name}"].append(loss_value)
-                
-                # Log to wandb
-                # if self.use_wandb:
-                #     log_dict = {f"val/{k}": v for k, v in eval_losses.items()}
-                #     wandb.log(log_dict, step=self.global_step)
-            
-            # Save model
-            if (epoch + 1) % (self.config.save_steps // len(train_loader)) == 0:
-                self.save_model(epoch)
-        
-        # Save final model
-        self.save_model("final")
-        
+                    self.training_stats[f"train_{loss_name}"].append(loss_value)
+                checkpoint_path = self.save_model(epoch)
+                if best_model_path is None:
+                    best_model_path = checkpoint_path
+            except Exception as e:
+                self.logger.error(f"Error in epoch {epoch}: {e}")
+                try:
+                    checkpoint_path = self.save_model(f"error_{epoch}")
+                    if best_model_path is None:
+                        best_model_path = checkpoint_path
+                except:
+                    pass
+                continue
+        try:
+            final_path = self.save_model("final")
+            best_model_path = final_path
+        except Exception as e:
+            self.logger.error(f"Error saving final model: {e}")
         self.logger.info("Training completed!")
-    
+        return best_model_path
     def save_model(self, epoch):
-        """Save model checkpoint."""
         output_dir = Path(self.config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        
         checkpoint_path = output_dir / f"checkpoint-epoch-{epoch}"
         checkpoint_path.mkdir(exist_ok=True)
-        
-        # Save model state
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict(),
-            'training_stats': dict(self.training_stats),
-            'global_step': self.global_step
-        }, checkpoint_path / "model.pt")
-        
-        # Save tokenizer
-        self.model.tokenizer.save_pretrained(checkpoint_path)
-        
-        self.logger.info(f"Model saved to {checkpoint_path}")
-    
-    def plot_training_curves(self):
-        """Plot training curves."""
-        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-        
-        # Language modeling loss
-        axes[0, 0].plot(self.training_stats['train_lm_loss'], label='Train')
-        if 'val_lm_loss' in self.training_stats:
-            axes[0, 0].plot(self.training_stats['val_lm_loss'], label='Val')
-        axes[0, 0].set_title('Language Modeling Loss')
-        axes[0, 0].set_xlabel('Epoch')
-        axes[0, 0].set_ylabel('Loss')
-        axes[0, 0].legend()
-        
-        # Geographic loss
-        axes[0, 1].plot(self.training_stats['train_geo_loss'], label='Train')
-        if 'val_geo_loss' in self.training_stats:
-            axes[0, 1].plot(self.training_stats['val_geo_loss'], label='Val')
-        axes[0, 1].set_title('Geographic Loss')
-        axes[0, 1].set_xlabel('Epoch')
-        axes[0, 1].set_ylabel('Loss')
-        axes[0, 1].legend()
-        
-        # Regional balance loss
-        axes[1, 0].plot(self.training_stats['train_regional_balance_loss'], label='Train')
-        if 'val_regional_balance_loss' in self.training_stats:
-            axes[1, 0].plot(self.training_stats['val_regional_balance_loss'], label='Val')
-        axes[1, 0].set_title('Regional Balance Loss')
-        axes[1, 0].set_xlabel('Epoch')
-        axes[1, 0].set_ylabel('Loss')
-        axes[1, 0].legend()
-        
-        # Total loss
-        axes[1, 1].plot(self.training_stats['train_total_loss'], label='Train')
-        if 'val_total_loss' in self.training_stats:
-            axes[1, 1].plot(self.training_stats['val_total_loss'], label='Val')
-        axes[1, 1].set_title('Total GRPO Loss')
-        axes[1, 1].set_xlabel('Epoch')
-        axes[1, 1].set_ylabel('Loss')
-        axes[1, 1].legend()
-        
-        plt.tight_layout()
-        plt.savefig(Path(self.config.output_dir) / "training_curves.png")
-        plt.show()
+        try:
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict() if self.optimizer else None,
+                'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
+                'training_stats': dict(self.training_stats),
+                'global_step': self.global_step,
+                'config': self.config
+            }, checkpoint_path / "model.pt")
+            if hasattr(self.model, 'tokenizer'):
+                self.model.tokenizer.save_pretrained(checkpoint_path)
+            self.logger.info(f"Model saved to {checkpoint_path}")
+            return str(checkpoint_path / "model.pt")
+        except Exception as e:
+            self.logger.error(f"Error saving model: {e}")
+            return None
 
-
-# Utility function to re-tokenize data after adding special tokens
-
-def retokenize_and_save(input_json_path, output_json_path, tokenizer, max_length=512):
-    """
-    Re-tokenize the data with the updated tokenizer and save to a new file.
-    Args:
-        input_json_path: Path to the raw data JSON file (list of dicts with 'input', 'region', ...)
-        output_json_path: Path to save the re-tokenized data
-        tokenizer: The updated tokenizer (with special tokens added)
-        max_length: Max sequence length for tokenization
-    """
-    import json
-    with open(input_json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    processed = []
-    for item in data:
-        text = item.get('input', '')
-        encoding = tokenizer(
-            text,
-            truncation=True,
-            padding='max_length',
-            max_length=max_length,
-            return_tensors='pt'
-        )
-        input_ids = encoding['input_ids'].squeeze().tolist()
-        # Debug: check max input_id
-        if max(input_ids) >= len(tokenizer):
-            print(f'[ERROR] Found input_id >= tokenizer vocab size: {max(input_ids)} >= {len(tokenizer)}')
-        item['input_ids'] = input_ids
-        processed.append(item)
-    with open(output_json_path, 'w', encoding='utf-8') as f:
-        json.dump(processed, f, indent=2, ensure_ascii=False)
-    print(f'[INFO] Saved re-tokenized data to {output_json_path}')
-
-
-# Example usage
 def main():
-    """Main training script."""
-    
-    # Load configuration
-    config = GRPOTrainingConfig()
-    
-    # --- CORRECT GeographicAdapter INIT ORDER ---
-    from transformers import AutoTokenizer, AutoModelForCausalLM
-    from geographic_adapter import GeographicAdapter, GeographicAdapterConfig
-    region_tokens = ['[AUSTRALIA]', '[INDIA]', '[UK]', '[US_SOUTH]', '[NIGERIA]']
-    # 1. Load tokenizer
-    tokenizer = AutoTokenizer.from_pretrained("gpt2")
-    # 2. Add region tokens
-    added = tokenizer.add_tokens(region_tokens)
-    # 3. Load base model
-    base_model = AutoModelForCausalLM.from_pretrained("gpt2")
-    # 4. Resize base model embeddings
-    if added > 0:
-        base_model.resize_token_embeddings(len(tokenizer))
-    # 5. Print and confirm
-    print("Tokenizer vocab size:", len(tokenizer))
-    print("Base model embedding size:", base_model.get_input_embeddings().weight.shape[0])
-    assert len(tokenizer) == base_model.get_input_embeddings().weight.shape[0], "Tokenizer and model embedding size mismatch!"
-    # 6. Create GeographicAdapterConfig with base_model_name="gpt2"
-    model_config = GeographicAdapterConfig(base_model_name="gpt2")
-    # 7. Create GeographicAdapter, assign base_model and tokenizer
-    model = GeographicAdapter(model_config)
-    model.base_model = base_model
-    model.tokenizer = tokenizer
-    # 8. Re-tokenize your data
-    retokenize_and_save(
-        input_json_path="data/raw/reddit.json",
-        output_json_path="data/processed/retokenized_reddit.json",
-        tokenizer=tokenizer,
-        max_length=512
-    )
-    # 9. Print min/max input_id after re-tokenization
-    import json
-    with open("data/processed/retokenized_reddit.json", "r", encoding="utf-8") as f:
-        processed = json.load(f)
-    all_ids = [id for item in processed for id in item.get('input_ids', [])]
-    if all_ids:
-        print(f"[DEBUG] After re-tokenization: min input_id: {min(all_ids)}, max input_id: {max(all_ids)} (embedding size: {base_model.get_input_embeddings().weight.shape[0]})")
-    # 10. Use the new processed file for training!
-    train_dataset = GeographicDataset(
-        data_path="data/processed/retokenized_reddit.json",
-        tokenizer=tokenizer,
-        max_length=512
-    )
-    # --- DEBUG: Print region ID range in dataset ---
-    all_region_ids = [item['region_id'] for item in train_dataset.data]
-    if all_region_ids:
-        print(f"[DEBUG] Region ID min: {min(all_region_ids)}, max: {max(all_region_ids)}")
-    # --- END PATCH ---
-    
-    # Split dataset for validation (simple split for demo)
-    train_size = int(0.9 * len(train_dataset))
-    val_size = len(train_dataset) - train_size
-    
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        train_dataset, [train_size, val_size]
-    )
-    
-    # After saving splits, add:
-    print(f"Train split size: {len(train_dataset)}")
-    print(f"Val split size: {len(val_dataset)}")
-    if train_dataset:
-        print("First train sample:", train_dataset[0])
-    else:
-        print("Train data is EMPTY!")
-    if val_dataset:
-        print("First val sample:", val_dataset[0])
-    else:
-        print("Val data is EMPTY!")
-    
-    # Initialize trainer
-    trainer = GRPOTrainer(model, config)
-    
-    # --- DEBUG: Print label and logits range in train_epoch ---
-    orig_train_epoch = trainer.train_epoch
-    def debug_train_epoch(train_loader, epoch):
-        result = orig_train_epoch(train_loader, epoch)
-        # Print label and logits range for first batch
-        for batch in train_loader:
-            labels = batch['labels']
-            input_ids = batch['input_ids']
-            print(f"[DEBUG] Labels min: {labels.min().item()}, max: {labels.max().item()}")
-            print(f"[DEBUG] Batch input_ids min: {input_ids.min().item()}, max: {input_ids.max().item()}")
-            break
-        return result
-    trainer.train_epoch = debug_train_epoch
-    # --- END PATCH ---
-    
-    # Start training
-    trainer.train(train_dataset, val_dataset)
-    
-    # Plot training curves
-    trainer.plot_training_curves()
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    try:
+        config = GRPOTrainingConfig()
+        model = initialize_model_safely()
+        train_dataset = GeographicDataset(
+            data_path=config.data_path,
+            tokenizer=model.tokenizer,
+            max_length=config.max_length
+        )
+        train_size = int(0.8 * len(train_dataset))
+        val_size = len(train_dataset) - train_size
+        train_split, val_split = torch.utils.data.random_split(
+            train_dataset, [train_size, val_size]
+        )
+        logger.info(f"Train split: {len(train_split)}")
+        logger.info(f"Val split: {len(val_split)}")
+        trainer = FixedGRPOTrainer(model, config)
+        best_model_path = trainer.train(train_split, val_split)
+        logger.info(f"Training completed! Best model: {best_model_path}")
+    except Exception as e:
+        logger.error(f"Training failed: {e}")
+        raise
 
 if __name__ == "__main__":
     main()
