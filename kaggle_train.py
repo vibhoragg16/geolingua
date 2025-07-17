@@ -28,7 +28,7 @@ sys.path.insert(0, src_path)
 sys.path.insert(0, config_path)
 
 from src.models.basemodel import GeoLinguaModel
-from src.models.grpo_trainer import GRPOTrainer, GRPOTrainingConfig
+from src.models.grpo_trainer import FixedGRPOTrainer as GRPOTrainer, GRPOTrainingConfig
 from src.data.loaders import DataLoader
 from config.model_config import *
 from config.data_config import *
