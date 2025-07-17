@@ -254,7 +254,7 @@ def main():
         test_data = load_test_data()
         
         # Load trained model
-        model_path = "/kaggle/input/my-modelss/final/geolingua_model.pth"  # Adjust path as needed
+        model_path = "/kaggle/input/final/geolingua_model.pth"  # Adjust path as needed
         model = load_trained_model(model_path)
         
         # Evaluate model
