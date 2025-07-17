@@ -383,9 +383,24 @@ def main():
         train_split, val_split = torch.utils.data.random_split(
             train_dataset, [train_size, val_size]
         )
+        # --- DEBUG PRINTS ---
+        num_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"Trainable parameters: {num_trainable}")
+        print(f"Dataset size: {len(train_dataset)}")
+        print(f"Batch size: {config.batch_size}")
+        print(f"Steps per epoch: {len(train_split) // config.batch_size}")
+        print(f"Epochs: {config.num_epochs}")
+        # --- END DEBUG PRINTS ---
         logger.info(f"Train split: {len(train_split)}")
         logger.info(f"Val split: {len(val_split)}")
         trainer = FixedGRPOTrainer(model, config)
+        # Print loss for each epoch
+        orig_train_epoch = trainer.train_epoch
+        def debug_train_epoch(train_loader, epoch):
+            result = orig_train_epoch(train_loader, epoch)
+            print(f"[DEBUG] End of epoch {epoch}: losses: {result}")
+            return result
+        trainer.train_epoch = debug_train_epoch
         best_model_path = trainer.train(train_split, val_split)
         logger.info(f"Training completed! Best model: {best_model_path}")
     except Exception as e:
