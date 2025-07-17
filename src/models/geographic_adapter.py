@@ -167,7 +167,8 @@ class GeographicAdapter(nn.Module):
     def forward(self, input_ids: torch.Tensor, 
                 attention_mask: torch.Tensor,
                 region_ids: torch.Tensor,
-                labels: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
+                labels: Optional[torch.Tensor] = None,
+                **kwargs) -> Dict[str, torch.Tensor]:
         """
         Forward pass of the geographic adapter model.
         
@@ -176,7 +177,8 @@ class GeographicAdapter(nn.Module):
             attention_mask: Attention mask of shape (batch_size, seq_len)
             region_ids: Region IDs of shape (batch_size,)
             labels: Optional labels for language modeling loss
-            
+            **kwargs: Accept and ignore extra keyword arguments (e.g., output_hidden_states)
+        
         Returns:
             Dictionary containing logits and losses
         """
