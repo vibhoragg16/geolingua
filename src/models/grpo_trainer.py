@@ -705,35 +705,32 @@ def main():
     print("Tokenizer vocab size:", len(tokenizer))
     print("Base model embedding size:", base_model.get_input_embeddings().weight.shape[0])
     assert len(tokenizer) == base_model.get_input_embeddings().weight.shape[0], "Tokenizer and model embedding size mismatch!"
-    # 6. Create GeographicAdapter with base_model and tokenizer
-    model_config = GeographicAdapterConfig(base_model_name=None)  # We'll pass the model directly
+    # 6. Create GeographicAdapterConfig with base_model_name="gpt2"
+    model_config = GeographicAdapterConfig(base_model_name="gpt2")
+    # 7. Create GeographicAdapter, assign base_model and tokenizer
     model = GeographicAdapter(model_config)
     model.base_model = base_model
     model.tokenizer = tokenizer
-    # 7. Re-tokenize your data
+    # 8. Re-tokenize your data
     retokenize_and_save(
-        input_json_path="data/raw/reddit.json",  # path to your raw data
-        output_json_path="data/processed/retokenized_reddit.json",  # path to save processed data
+        input_json_path="data/raw/reddit.json",
+        output_json_path="data/processed/retokenized_reddit.json",
         tokenizer=tokenizer,
-        max_length=config.max_length if hasattr(config, 'max_length') else 512
+        max_length=512
     )
-    # Debug: Check max input_id in new processed file
+    # 9. Print min/max input_id after re-tokenization
     import json
     with open("data/processed/retokenized_reddit.json", "r", encoding="utf-8") as f:
         processed = json.load(f)
     all_ids = [id for item in processed for id in item.get('input_ids', [])]
     if all_ids:
         print(f"[DEBUG] After re-tokenization: min input_id: {min(all_ids)}, max input_id: {max(all_ids)} (embedding size: {base_model.get_input_embeddings().weight.shape[0]})")
-    # Use the new processed file for training!
-    # --- END PATCH ---
-    
-    # Load datasets
+    # 10. Use the new processed file for training!
     train_dataset = GeographicDataset(
         data_path="data/processed/retokenized_reddit.json",
         tokenizer=tokenizer,
-        max_length=config.max_length if hasattr(config, 'max_length') else 512
+        max_length=512
     )
-    
     # --- DEBUG: Print region ID range in dataset ---
     all_region_ids = [item['region_id'] for item in train_dataset.data]
     if all_region_ids:
