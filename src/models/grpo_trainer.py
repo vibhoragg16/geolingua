@@ -698,31 +698,27 @@ def main():
     region_tokens = ['[AUSTRALIA]', '[INDIA]', '[UK]', '[US_SOUTH]', '[NIGERIA]']
     added = model.tokenizer.add_tokens(region_tokens)
     if added > 0:
-        print(f"[INFO] Added {added} region tokens to tokenizer. Resizing model embeddings...")
         model.resize_token_embeddings(len(model.tokenizer))
-    else:
-        print("[INFO] Region tokens already present in tokenizer.")
-    # --- END PATCH ---
-    
-    # --- DEBUG: Print vocab and embedding size ---
-    print("Tokenizer vocab size:", len(model.tokenizer))
-    print("Model embedding size:", model.base_model.get_input_embeddings().weight.shape[0])
-    # --- END PATCH ---
-    
-    # --- RE-TOKENIZE RAW DATA IF NEEDED ---
-    # (Uncomment and set correct paths to use)
-    # retokenize_and_save(
-    #     input_json_path="data/raw/reddit.json",  # path to your raw data
-    #     output_json_path="data/processed/retokenized_reddit.json",  # path to save processed data
-    #     tokenizer=model.tokenizer,
-    #     max_length=model_config.max_length
-    # )
-    # Use the new processed file for training!
+
+    # Now re-tokenize your data
+    retokenize_and_save(
+        input_json_path="data/raw/reddit.json",  # path to your raw data
+        output_json_path="data/processed/retokenized_reddit.json",  # path to save processed data
+        tokenizer=model.tokenizer,
+        max_length=model_config.max_length
+    )
+    # Debug: Check max input_id in new processed file
+    import json
+    with open("data/processed/retokenized_reddit.json", "r", encoding="utf-8") as f:
+        processed = json.load(f)
+    all_ids = [id for item in processed for id in item.get('input_ids', [])]
+    if all_ids:
+        print(f"[DEBUG] After re-tokenization: min input_id: {min(all_ids)}, max input_id: {max(all_ids)} (embedding size: {model.base_model.get_input_embeddings().weight.shape[0]})")
     # --- END PATCH ---
     
     # Load datasets
     train_dataset = GeographicDataset(
-        data_path="data/raw/reddit",
+        data_path="data/processed/retokenized_reddit.json",
         tokenizer=model.tokenizer,
         max_length=model_config.max_length
     )
