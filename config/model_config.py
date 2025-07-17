@@ -5,7 +5,7 @@ MODEL_NAME = "gpt2"  # Start with smaller model
 MAX_LENGTH = 512
 BATCH_SIZE = 4
 LEARNING_RATE = 1e-5
-NUM_EPOCHS = 10
+NUM_EPOCHS = 5
 
 # Geographic regions
 REGIONS = {
