@@ -688,25 +688,29 @@ def main():
     # Load configuration
     config = GRPOTrainingConfig()
     
-    # --- CORRECT GPT-2 TOKENIZER/MODEL INIT ORDER ---
+    # --- CORRECT GeographicAdapter INIT ORDER ---
     from transformers import AutoTokenizer, AutoModelForCausalLM
+    from geographic_adapter import GeographicAdapter, GeographicAdapterConfig
     region_tokens = ['[AUSTRALIA]', '[INDIA]', '[UK]', '[US_SOUTH]', '[NIGERIA]']
     # 1. Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
     # 2. Add region tokens
     added = tokenizer.add_tokens(region_tokens)
-    # 3. Load model
-    model = AutoModelForCausalLM.from_pretrained("gpt2")
-    # 4. Resize model embeddings
+    # 3. Load base model
+    base_model = AutoModelForCausalLM.from_pretrained("gpt2")
+    # 4. Resize base model embeddings
     if added > 0:
-        model.resize_token_embeddings(len(tokenizer))
+        base_model.resize_token_embeddings(len(tokenizer))
     # 5. Print and confirm
     print("Tokenizer vocab size:", len(tokenizer))
-    print("Model embedding size:", model.get_input_embeddings().weight.shape[0])
-    assert len(tokenizer) == model.get_input_embeddings().weight.shape[0], "Tokenizer and model embedding size mismatch!"
-    # --- END PATCH ---
-    
-    # Now re-tokenize your data
+    print("Base model embedding size:", base_model.get_input_embeddings().weight.shape[0])
+    assert len(tokenizer) == base_model.get_input_embeddings().weight.shape[0], "Tokenizer and model embedding size mismatch!"
+    # 6. Create GeographicAdapter with base_model and tokenizer
+    model_config = GeographicAdapterConfig(base_model_name=None)  # We'll pass the model directly
+    model = GeographicAdapter(model_config)
+    model.base_model = base_model
+    model.tokenizer = tokenizer
+    # 7. Re-tokenize your data
     retokenize_and_save(
         input_json_path="data/raw/reddit.json",  # path to your raw data
         output_json_path="data/processed/retokenized_reddit.json",  # path to save processed data
@@ -719,7 +723,7 @@ def main():
         processed = json.load(f)
     all_ids = [id for item in processed for id in item.get('input_ids', [])]
     if all_ids:
-        print(f"[DEBUG] After re-tokenization: min input_id: {min(all_ids)}, max input_id: {max(all_ids)} (embedding size: {model.get_input_embeddings().weight.shape[0]})")
+        print(f"[DEBUG] After re-tokenization: min input_id: {min(all_ids)}, max input_id: {max(all_ids)} (embedding size: {base_model.get_input_embeddings().weight.shape[0]})")
     # Use the new processed file for training!
     # --- END PATCH ---
     
