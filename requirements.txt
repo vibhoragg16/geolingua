@@ -24,3 +24,5 @@ python-dotenv
 wikipedia
 requests
 beautifulsoup4
+worldcloud
+huggingface_hub
