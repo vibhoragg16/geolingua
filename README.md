@@ -5,54 +5,62 @@
 <br />
 
 GeoLingua
-A powerful, multilingual translation engine bridging the gap between languages and geography.
+A geographic-aware language model that adapts its responses based on regional linguistic patterns, cultural references, and local knowledge using Group-based Reward Policy Optimization (GRPO) techniques.
 
 </div>
 
-GeoLingua is an open-source project designed to provide accurate and context-aware translations, with a special focus on handling geographical and location-based named entities. It leverages a sophisticated interlingual representation, allowing it to understand the core meaning of a text before generating the translation in the target language. This approach ensures higher accuracy, especially for complex sentences and low-resource language pairs.
-
-Note: This project is currently under active development. Contributions are welcome!
+📝 Overview
+GeoLingua is an open-source project designed to understand and generate text appropriate to specific geographic regions. It moves beyond generic language models by incorporating local dialects, cultural references, and regional knowledge. The model uses Group-based Reward Policy Optimization (GRPO) to fine-tune responses for different geographic contexts, ensuring more natural and contextually-aware interactions.
 
 ✨ Features
-High-Quality Machine Translation: Translate text between multiple languages with high fidelity.
+Geographic Adaptation: Adapts language style based on the target geographic context.
 
-Interlingual Approach: Utilizes a language-agnostic intermediate representation for more robust translations.
+Cultural Awareness: Incorporates regional cultural references, slang, and local knowledge.
 
-Geographical Awareness: Specialised models to correctly identify and translate location names, addresses, and geographical features.
+GRPO Training: Uses Group-based Reward Policy Optimization for fine-tuning, a novel approach to steer the model's behavior.
 
-Scalable Architecture: Built to support a growing number of languages without requiring a new model for every language pair.
+Multi-source Data Collection: Gathers data from diverse sources like Reddit, news articles, and Wikipedia to build robust regional profiles.
 
-REST API: Comes with a simple and powerful REST API for easy integration into your own applications.
+Supported Regions: Pre-trained models for a variety of English-speaking regions.
 
-Customizable: Train and fine-tune models on your own datasets for specific domains.
+Interactive Demo: A web-based interface built with Streamlit for easy testing and demonstration.
 
-🚀 Live Demo
-[Provide a link to your hosted application or a live demo if you have one. You can also add a GIF or screenshot here.]
+Extensible: Designed to be easily extended with new regions and data sources.
 
-Example: https://your-geolingua-demo.com
+🌏 Supported Regions
+United States (South): Southern dialects, cultural references, and local knowledge.
 
-🛠️ Technology Stack
-Backend: Python
+United Kingdom: British English, cultural context, and regional variations.
 
-Machine Learning Framework: [e.g., PyTorch, TensorFlow, JAX]
+Australia: Australian English, slang, and cultural references.
 
-NLP Library: [e.g., Hugging Face Transformers, Fairseq, OpenNMT]
+India: Indian English variations and cultural context.
 
-API Framework: [e.g., FastAPI, Flask, Django REST Framework]
+Nigeria: Nigerian English and cultural references.
 
-Database: [e.g., PostgreSQL, SQLite, MongoDB] - if applicable
-
-Containerization: Docker
+🏗️ Project Structure
+geolingua/
+├── src/
+│   ├── data/          # Data collection and preprocessing scripts
+│   ├── models/        # Model architecture and training logic
+│   ├── evaluation/    # Evaluation metrics and benchmarks
+│   └── utils/         # Utility functions
+├── config/            # Configuration files for models and data
+├── data/              # Raw and processed data storage
+├── notebooks/         # Jupyter notebooks for experimentation
+├── demo/              # Interactive Streamlit demo application
+├── tests/             # Unit and integration tests
+└── scripts/           # High-level scripts for training, evaluation, etc.
 
 ⚙️ Installation
-To get a local copy up and running, follow these simple steps.
+To get a local copy up and running, follow these steps.
 
 Prerequisites
 Python 3.8+
 
 pip (Python package installer)
 
-(Optional) Git for cloning the repository
+Git
 
 Steps
 Clone the repository:
@@ -64,84 +72,55 @@ Create and activate a virtual environment:
 
 Linux/macOS:
 
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv geolingua_env
+source geolingua_env/bin/activate
 
 Windows:
 
-python -m venv venv
-.\venv\Scripts\activate
+python -m venv geolingua_env
+geolingua_env\Scripts\activate
 
-Install the required dependencies:
+Install dependencies:
 
 pip install -r requirements.txt
 
-Download pre-trained models and data:
-(This is a placeholder. Add instructions on how to get necessary model files, datasets, or other assets.)
+Install in development mode (recommended for contributors):
 
-# Example:
-# python download_models.py
-# or provide a gdown/wget link
+pip install -e .
 
-▶️ Usage
-Once the installation is complete, you can run the application.
+🚀 Quick Start
+Follow these steps to collect data, train a model, and run the demo.
 
-Running the API Server
-To start the translation API server (powered by FastAPI/Flask):
+Data Collection:
+Collect data for a specific region from a source like Reddit.
 
-# Example for FastAPI
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python scripts/collect_data.py --region us_south --source reddit
 
-The API documentation will be available at http://localhost:8000/docs.
+Training: Train the model using kaggle and for more detail refer KAGGLE_GUIDE.md 
 
-Using the API
-You can send a POST request to the /translate endpoint.
+python kaggle_train.py
 
-Example using curl:
+Evaluation:
+Evaluate the performance of your trained model.
 
-curl -X 'POST' \
-  'http://localhost:8000/translate' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "text": "What is the capital of France?",
-    "source_lang": "en",
-    "target_lang": "es"
-  }'
+python evaluate_model.py
 
-Expected Response:
+Run the Interactive Demo:
+Launch the Streamlit demo to interact with your model.
 
-{
-  "original_text": "What is the capital of France?",
-  "translated_text": "¿Cuál es la capital de Francia?",
-  "source_lang": "en",
-  "target_lang": "es"
-}
+streamlit run demo/app.py
 
-Running as a Command-Line Tool
-(If you provide a CLI, add instructions here.)
+🔧 Configuration
+Model, training, and data parameters can be easily modified in the config/ directory:
 
-python translate.py --text "Hello, world!" --from en --to fr
+config/model_config.py: Controls model architecture, learning rates, and other training settings.
 
-🏗️ How It Works
-[Provide a brief, high-level overview of your project's architecture. This is a great place to explain your unique approach.]
-
-GeoLingua is built upon an Encoder-Decoder architecture. However, instead of mapping directly from a source language to a target language, we introduce an intermediate step:
-
-Encoder: The source text is fed into a powerful language model (the Encoder) which transforms it into a dense, language-independent vector representation known as the "interlingua". This representation captures the pure semantic meaning of the text.
-
-Interlingua: This is the core of GeoLingua. It's a universal representation that is decoupled from the grammar and vocabulary of any specific language.
-
-Decoder: A language-specific Decoder takes the interlingua representation and generates the final text in the desired target language.
-
-This design allows for greater flexibility and scalability. To add a new language, we only need to train a new encoder/decoder pair to interface with the existing interlingua, rather than training a new model for every possible language combination.
+config/data_config.py: Manages data collection sources, preprocessing steps, and paths.
 
 🤝 Contributing
 Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are greatly appreciated.
 
-To contribute, please follow these steps:
-
-Fork the Project (https://github.com/vibhoragg16/geolingua/fork)
+Fork the Project
 
 Create your Feature Branch (git checkout -b feature/AmazingFeature)
 
@@ -151,19 +130,22 @@ Push to the Branch (git push origin feature/AmazingFeature)
 
 Open a Pull Request
 
-Please make sure to update tests as appropriate.
+Please add tests for any new features or bug fixes.
 
 📜 License
-Distributed under the MIT License. See LICENSE for more information.
+Distributed under the MIT License. See LICENSE file for more information.
 
-🙏 Acknowledgments
-Awesome Readme Templates
+✒️ Citation
+If you use GeoLingua in your research, please cite it as follows:
 
-Hugging Face for their incredible work on democratizing NLP.
-
-[Add any other acknowledgments here]
+@software{geolingua_2025,
+  title={GeoLingua: A Geographic-Aware Language Model with Group-based Reward Policy Optimization (GRPO)},
+  author={Vibhor Aggarwal},
+  year={2025},
+  url={[https://github.com/vibhoragg16/geolingua](https://github.com/vibhoragg16/geolingua)}
+}
 
 📧 Contact
-Vibhor Aggarwal - @your_twitter_handle - vibhoragg16@email.com
+Vibhor Aggarwal - vibhoragg16@email.com
 
 Project Link: https://github.com/vibhoragg16/geolingua
