@@ -15,6 +15,8 @@ import re
 import time
 import sys
 import os
+from huggingface_hub import hf_hub_download # <-- ADD THIS IMPORT
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 from models.basemodel import GeoLinguaModel
@@ -51,9 +53,16 @@ class GeoLinguaDemo:
             st.session_state.conversation_history = []
         if 'model_loaded' not in st.session_state:
             st.session_state.model_loaded = False
-        
-    def load_model(self, model_path: str, model_type: str):
+    
+    # --- MODIFIED FUNCTION ---
+    def load_model(self, repo_id: str, filename: str, model_type: str):
+        """
+        Downloads a model from Hugging Face Hub and loads it.
+        """
         try:
+            # Download the model from the Hub. This returns the cached file path.
+            model_path = hf_hub_download(repo_id=repo_id, filename=filename)
+
             if model_type.startswith("GeoLinguaModel"):
                 model = GeoLinguaModel(
                     model_name=MODEL_NAME,
@@ -66,23 +75,25 @@ class GeoLinguaDemo:
                     }
                 )
                 model.load_model(model_path)
-            else:
+            else: # Assumes GeographicAdapter
                 config = GeographicAdapterConfig(
                     base_model_name=MODEL_NAME,
                     num_regions=len(self.regions),
                     region_embedding_dim=64
                 )
                 model = GeographicAdapter(config)
+                # Load the state dict from the downloaded file path
                 checkpoint = torch.load(model_path, map_location=model.base_model.device, weights_only=False)
                 model.load_state_dict(checkpoint['model_state_dict'])
                 model = model.to(model.base_model.device)
                 model.eval()
+            
             st.session_state.model = model
             st.session_state.model_loaded = True
             st.session_state.model_type = model_type
             return True
         except Exception as e:
-            st.error(f"Failed to load model: {str(e)}")
+            st.error(f"Failed to load model from '{repo_id}/{filename}': {str(e)}")
             return False
     
     def generate_response(self, prompt: str, region_id: int, max_length: int = 100, temperature: float = 1.0) -> str:
@@ -519,26 +530,27 @@ class GeoLinguaDemo:
         st.title("🌍 GeoLingua: Geographically Adaptive Language Model")
         st.markdown("Explore how language models can adapt to different geographic contexts and linguistic patterns!")
         
-        # Sidebar for model controls
+        # --- MODIFIED SIDEBAR ---
         with st.sidebar:
             st.header("⚙️ Model Controls")
             
             # Model loading section
-            st.subheader("Model Loading")
-            model_path = st.text_input("Model Path", "models/final/geolingua_model.pth")
-            model_type = st.sidebar.selectbox(
+            st.subheader("Model Loading from Hugging Face")
+            repo_id = st.text_input("Hugging Face Repo ID", "Vibhoragg/geolingua")
+            filename = st.text_input("Model Filename", "geolingua_model.pth")
+            
+            model_type = st.selectbox(
                 "Model Type",
                 ["GeoLinguaModel (region token)", "GeographicAdapter (region embedding)"],
                 index=1
             )
             
             if st.button("Load Model"):
-                with st.spinner("Loading model..."):
-                    success = self.load_model(model_path, model_type)
+                with st.spinner(f"Downloading and loading '{filename}'..."):
+                    success = self.load_model(repo_id, filename, model_type)
                     if success:
                         st.success("Model loaded successfully!")
-                    else:
-                        st.error("Failed to load model")
+                    # Error is handled inside load_model
             
             # Show model status
             if st.session_state.model_loaded:
@@ -585,6 +597,10 @@ class GeoLinguaDemo:
             
             if prompt and selected_regions:
                 if st.button("Generate Responses", type="primary"):
+                    if not st.session_state.model_loaded:
+                        st.error("Please load a model first using the sidebar controls.")
+                        return
+
                     with st.spinner("Generating responses..."):
                         responses = self.analyze_text_differences(prompt, selected_regions)
                     
