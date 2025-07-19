@@ -31,11 +31,9 @@ geolingua/
 ├── src/
 │   ├── data/          # Data collection and preprocessing scripts
 │   ├── models/        # Model architecture and training logic
-│   ├── evaluation/    # Evaluation metrics and benchmarks
 │   └── utils/         # Utility functions
 ├── config/            # Configuration files for models and data
 ├── data/              # Raw and processed data storage
-├── notebooks/         # Jupyter notebooks for experimentation
 ├── demo/              # Interactive Streamlit demo application
 ├── tests/             # Unit and integration tests
 └── scripts/           # High-level scripts for training, evaluation, etc.
@@ -146,6 +144,4 @@ If you use GeoLingua in your research, please cite it as follows:
 
 ## 📧 Contact
 
-Vibhor Aggarwal - vibhoragg16@email.com
-
-Project Link: <https://github.com/vibhoragg16/geolingua>
+Project Link: <https://geolingua-st.streamlit.app/>
