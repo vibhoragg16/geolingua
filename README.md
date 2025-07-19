@@ -2,9 +2,10 @@
 <br />
 <!-- Add your logo here -->
 <!-- <img src="path/to/your/logo.png" alt="GeoLingua Logo" width="200"/> -->
+  GeoLingua
 <br />
 
-GeoLingua
+
 A geographic-aware language model that adapts its responses based on regional linguistic patterns, cultural references, and local knowledge using Group-based Reward Policy Optimization (GRPO) techniques.
 
 </div>
