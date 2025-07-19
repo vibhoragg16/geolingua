@@ -17,9 +17,9 @@ import sys
 import os
 from huggingface_hub import hf_hub_download # <-- ADD THIS IMPORT
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
-from models.basemodel import GeoLinguaModel
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+from src.models.basemodel import GeoLinguaModel
 from config.model_config import *
 from src.models.geographic_adapter import GeographicAdapter, GeographicAdapterConfig
 
