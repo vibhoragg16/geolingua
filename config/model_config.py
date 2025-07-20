@@ -1,6 +1,5 @@
 # Model configuration
-MODEL_NAME = "gpt2"  # Start with smaller model
-# MODEL_NAME = "meta-llama/Llama-2-7b-hf"  # Upgrade later
+MODEL_NAME = "gpt2"  
 
 MAX_LENGTH = 512
 BATCH_SIZE = 4
